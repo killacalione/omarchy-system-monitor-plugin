@@ -29,6 +29,13 @@ Panel {
   property string memoryAvailable: "—"
   property string memorySwap: "—"
 
+  property string processCount: "—"
+  property string threadCount: "—"
+  property bool processAvailable: false
+  property var processRows: []
+  property string processError: ""
+  property bool processCollectorBusy: false
+
   property real cpuTotalLast: NaN
   property real cpuIdleLast: NaN
 
@@ -60,16 +67,19 @@ Panel {
     root.gpuGraphicsClock = "—"
     root.gpuMemoryClock = "—"
     root.gpuDriverVersion = "—"
+    if (!root.opened) return
     if (reason && reason !== "") root.gpuModel = "Unavailable"
   }
 
   function handleGpuFailure(message) {
+    if (!root.opened) return
     if (message && message !== "") console.warn("k3v.hardware: " + message)
     root.setGpuUnavailable(message)
   }
 
   function updateGpuState(rawText) {
     var text = String(rawText || "").trim()
+    if (!root.opened) return
     if (!text) {
       root.handleGpuFailure("nvidia-smi returned no output")
       return
@@ -97,6 +107,7 @@ Panel {
 
   function updateCpuState(rawText) {
     var text = String(rawText || "").trim()
+    if (!root.opened) return
     if (!text) {
       root.cpuModel = "—"
       root.cpuUsage = "—"
@@ -158,10 +169,96 @@ Panel {
     else root.memorySwap = "None"
   }
 
+  function setProcessUnavailable(reason) {
+    root.processAvailable = false
+    root.processCount = "—"
+    root.threadCount = "—"
+    root.processRows = []
+    if (!root.opened) {
+      root.processError = ""
+      return
+    }
+    if (reason && reason !== "") {
+      if (root.processError !== reason) {
+        console.warn("k3v.hardware: " + reason)
+        root.processError = reason
+      }
+    } else {
+      root.processError = ""
+    }
+  }
+
+  function handleProcessFailure(message) {
+    root.setProcessUnavailable(message)
+  }
+
+  function updateProcessState(rawText) {
+    if (!root.opened) {
+      root.processAvailable = false
+      root.processCount = "—"
+      root.threadCount = "—"
+      root.processRows = []
+      root.processError = ""
+      root.processCollectorBusy = false
+      return
+    }
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.handleProcessFailure("Process telemetry returned no output")
+      return
+    }
+
+    var data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      root.handleProcessFailure("Process telemetry JSON was malformed")
+      return
+    }
+
+    if (!data || typeof data !== "object") {
+      root.handleProcessFailure("Process telemetry payload was invalid")
+      return
+    }
+
+    if (typeof data.error === "string" && data.error !== "") {
+      root.handleProcessFailure("Process telemetry failed: " + data.error)
+      return
+    }
+
+    root.processAvailable = true
+    root.processError = ""
+    root.processCount = typeof data.processCount === "number" ? String(data.processCount) : "—"
+    root.threadCount = typeof data.threadCount === "number" ? String(data.threadCount) : "—"
+
+    var rows = []
+    if (Array.isArray(data.topCpu)) {
+      for (var i = 0; i < data.topCpu.length; ++i) {
+        var item = data.topCpu[i]
+        if (!item || typeof item !== "object") continue
+        var pid = item.pid
+        var name = item.name !== undefined && item.name !== null ? String(item.name).trim() : "unknown"
+        if (name === "") name = "unknown"
+        var cpu = Number(item.cpu)
+        var rssMiB = Number(item.rssMiB)
+        var label = name
+        if (pid !== undefined && pid !== null && String(pid).trim() !== "") label += " [" + String(pid) + "]"
+        var cpuText = isNaN(cpu) ? "—" : cpu.toFixed(1) + "%"
+        var rssText = isNaN(rssMiB) ? "—" : rssMiB.toFixed(1) + " MiB"
+        rows.push(label + "  " + cpuText + " · " + rssText)
+      }
+    }
+    root.processRows = rows
+  }
+
   function refresh() {
     if (!root.opened) return
     if (!gpuProc.running) gpuProc.running = true
     if (!cpuProc.running) cpuProc.running = true
+    if (!root.processCollectorBusy && !processProc.running) {
+      root.processCollectorBusy = true
+      processProc.running = true
+    }
   }
 
   readonly property var sections: [
@@ -206,14 +303,6 @@ Panel {
       ]
     },
     {
-      title: "Processes",
-      rows: [
-        { label: "Active", value: "—" },
-        { label: "Threads", value: "—" },
-        { label: "Top", value: "—" }
-      ]
-    },
-    {
       title: "Storage",
       rows: [
         { label: "Root", value: "—" },
@@ -244,6 +333,149 @@ Panel {
     else {
       gpuProc.running = false
       cpuProc.running = false
+      processProc.running = false
+      root.processCollectorBusy = false
+      root.processError = ""
+    }
+  }
+
+  Process {
+    id: processProc
+    command: [
+      "bash",
+      "-lc",
+      "python3 - <<'PY'\n" +
+      "import json, os, time\n" +
+      "exclude = {os.getpid(), os.getppid()}\n" +
+      "def read_status(path):\n" +
+      "    values = {}\n" +
+      "    try:\n" +
+      "        with open(path, 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "            for line in fh:\n" +
+      "                if ':' not in line:\n" +
+      "                    continue\n" +
+      "                key, val = line.split(':', 1)\n" +
+      "                values[key.strip()] = val.strip()\n" +
+      "    except (FileNotFoundError, PermissionError, OSError):\n" +
+      "        pass\n" +
+      "    return values\n\n" +
+      "def sample_processes():\n" +
+      "    result = {}\n" +
+      "    for name in os.listdir('/proc'):\n" +
+      "        if not name.isdigit():\n" +
+      "            continue\n" +
+      "        pid = int(name)\n" +
+      "        if pid in exclude:\n" +
+      "            continue\n" +
+      "        stat_path = f'/proc/{pid}/stat'\n" +
+      "        status_path = f'/proc/{pid}/status'\n" +
+      "        try:\n" +
+      "            with open(stat_path, 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "                raw = fh.read().strip()\n" +
+      "            if not raw or ') ' not in raw:\n" +
+      "                continue\n" +
+      "            left, rest = raw.split(')', 1)\n" +
+      "            fields = rest.strip().split()\n" +
+      "            if len(fields) < 18:\n" +
+      "                continue\n" +
+      "            name_text = left.split('(', 1)[1] if '(' in left else str(pid)\n" +
+      "            try:\n" +
+      "                with open(f'/proc/{pid}/comm', 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "                    name_text = fh.read().strip()\n" +
+      "            except (FileNotFoundError, PermissionError, OSError):\n" +
+      "                pass\n" +
+      "            status = read_status(status_path)\n" +
+      "            threads = 1\n" +
+      "            try:\n" +
+      "                threads = int(status.get('Threads', '1'))\n" +
+      "            except (TypeError, ValueError):\n" +
+      "                pass\n" +
+      "            rss_kib = 0\n" +
+      "            try:\n" +
+      "                rss_kib = float(status.get('VmRSS', '0 kB').split()[0])\n" +
+      "            except (AttributeError, TypeError, ValueError):\n" +
+      "                pass\n" +
+      "            result[pid] = {\n" +
+      "                'pid': pid,\n" +
+      "                'name': name_text or str(pid),\n" +
+      "                'cpu_ticks': float(fields[11]) + float(fields[12]),\n" +
+      "                'rss_kib': rss_kib,\n" +
+      "                'threads': threads,\n" +
+      "            }\n" +
+      "        except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError, OSError):\n" +
+      "            continue\n" +
+      "    return result\n\n" +
+      "try:\n" +
+      "    with open('/proc/stat', 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "        cpu_line = fh.readline().split()\n" +
+      "    if len(cpu_line) < 5:\n" +
+      "        raise ValueError('bad /proc/stat header')\n" +
+      "    total1 = sum(float(v) for v in cpu_line[1:9])\n" +
+      "    idle1 = float(cpu_line[4]) + float(cpu_line[5])\n" +
+      "    before = sample_processes()\n" +
+      "    time.sleep(0.25)\n" +
+      "    with open('/proc/stat', 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "        cpu_line = fh.readline().split()\n" +
+      "    if len(cpu_line) < 5:\n" +
+      "        raise ValueError('bad /proc/stat header')\n" +
+      "    total2 = sum(float(v) for v in cpu_line[1:9])\n" +
+      "    idle2 = float(cpu_line[4]) + float(cpu_line[5])\n" +
+      "    after = sample_processes()\n" +
+      "    total_delta = total2 - total1\n" +
+      "    top = []\n" +
+      "    for pid, info in after.items():\n" +
+      "        previous = before.get(pid)\n" +
+      "        if previous is None:\n" +
+      "            continue\n" +
+      "        process_delta = info['cpu_ticks'] - previous['cpu_ticks']\n" +
+      "        if process_delta <= 0 or total_delta <= 0:\n" +
+      "            continue\n" +
+      "        cpu_pct = 100.0 * process_delta / total_delta\n" +
+      "        rss_mib = info['rss_kib'] / 1024.0\n" +
+      "        top.append({\n" +
+      "            'pid': pid,\n" +
+      "            'name': info['name'],\n" +
+      "            'cpu': round(cpu_pct, 1),\n" +
+      "            'rssMiB': round(rss_mib, 1),\n" +
+      "            'threads': info['threads'],\n" +
+      "        })\n" +
+      "    top.sort(key=lambda item: (-item['cpu'], item['pid']))\n" +
+      "    payload = {\n" +
+      "        'processCount': len(after),\n" +
+      "        'threadCount': sum(item['threads'] for item in after.values()),\n" +
+      "        'topCpu': top[:5],\n" +
+      "    }\n" +
+      "    print(json.dumps(payload, separators=(',', ':')))\n" +
+      "except Exception as exc:\n" +
+      "    print(json.dumps({'processCount': 0, 'threadCount': 0, 'topCpu': [], 'error': str(exc)[:200]}, separators=(',', ':')) )\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateProcessState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (!root.opened) return
+        var msg = String(text || "").trim()
+        if (msg !== "") {
+          if (root.processError !== msg) {
+            console.warn("k3v.hardware: " + msg)
+            root.processError = msg
+          }
+        }
+      }
+    }
+    onExited: function(exitCode) {
+      root.processCollectorBusy = false
+      if (!root.opened) {
+        root.processError = ""
+        return
+      }
+      if (exitCode !== 0 && root.processError === "") {
+        root.setProcessUnavailable("Process telemetry exited with code " + exitCode)
+      }
     }
   }
 
@@ -335,12 +567,13 @@ Panel {
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.opened) return
         var msg = String(text || "").trim()
         if (msg !== "") console.warn("k3v.hardware: " + msg)
       }
     }
     onExited: function(exitCode) {
-      if (exitCode !== 0) console.warn("k3v.hardware: CPU telemetry process exited with code " + exitCode)
+      if (root.opened && exitCode !== 0) console.warn("k3v.hardware: CPU telemetry process exited with code " + exitCode)
     }
   }
 
@@ -358,12 +591,13 @@ Panel {
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.opened) return
         var msg = String(text || "").trim()
         if (msg !== "") root.handleGpuFailure(msg)
       }
     }
     onExited: function(exitCode) {
-      if (exitCode !== 0) root.handleGpuFailure("nvidia-smi exited with code " + exitCode)
+      if (root.opened && exitCode !== 0) root.handleGpuFailure("nvidia-smi exited with code " + exitCode)
     }
   }
 
@@ -372,6 +606,15 @@ Panel {
     running: root.opened
     repeat: true
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    interval: 2000
+    running: root.opened
+    repeat: true
+    onTriggered: {
+      if (!processProc.running) processProc.running = true
+    }
   }
 
   function setCenterHoverRevealSuppressed(value) {
@@ -533,6 +776,97 @@ Panel {
                       font.pixelSize: Style.font.bodySmall
                     }
                   }
+                }
+              }
+            }
+          }
+
+          BorderSurface {
+            width: panelFlick.width
+            color: Util.alpha(Color.popups.background, 0.94)
+            borderSpec: Border.flat(Util.alpha(root.foreground, 0.12), 1)
+            radius: Style.cornerRadius
+            implicitHeight: processSectionColumn.implicitHeight + Style.space(16)
+
+            Column {
+              id: processSectionColumn
+              width: parent.width
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.space(10)
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "PROCESSES"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Item {
+                width: processSectionColumn.width
+                implicitHeight: Math.max(processCountText.implicitHeight, processCountValue.implicitHeight)
+
+                Text {
+                  id: processCountText
+                  anchors.left: parent.left
+                  text: "Processes"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                Text {
+                  id: processCountValue
+                  anchors.right: parent.right
+                  text: root.processAvailable ? root.processCount : "—"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+              }
+
+              Item {
+                width: processSectionColumn.width
+                implicitHeight: Math.max(processThreadsText.implicitHeight, processThreadsValue.implicitHeight)
+
+                Text {
+                  id: processThreadsText
+                  anchors.left: parent.left
+                  text: "Threads"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                Text {
+                  id: processThreadsValue
+                  anchors.right: parent.right
+                  text: root.processAvailable ? root.threadCount : "—"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+              }
+
+              Text {
+                width: processSectionColumn.width
+                text: "TOP CPU"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                visible: root.processAvailable || root.processRows.length > 0
+              }
+
+              Repeater {
+                model: root.processRows.length > 0 ? root.processRows : ["—"]
+                delegate: Text {
+                  width: processSectionColumn.width
+                  text: modelData
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
                 }
               }
             }

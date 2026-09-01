@@ -1,5 +1,13 @@
 # Changelog
 
+## Milestone 4 — Process telemetry
+- Added live process count and thread count using `/proc` enumeration and `/proc/[pid]/status` metadata
+- Added top five live CPU consumers based on delta-sampled `/proc/[pid]/stat` and `/proc/stat` totals, normalized to total machine CPU capacity
+- Displayed resident memory per process via `VmRSS` from `/proc/[pid]/status` and converted it to MiB for compact rows
+- Kept process polling constrained to the active panel lifecycle and prevented overlapping collectors
+- Added defensive handling for disappearing or unreadable PIDs without crashing the shell
+- Updated the plugin version to `0.4.0`
+
 ## Milestone 3 — CPU/RAM/temperature telemetry
 - Added live CPU model, CPU usage, and CPU temperature telemetry from `/proc/cpuinfo`, `/proc/stat`, and the detected `hwmon` temperature sensor
 - Added live memory usage and swap totals from `/proc/meminfo`, using `MemTotal - MemAvailable` for used memory and `SwapTotal - SwapFree` for swap usage
