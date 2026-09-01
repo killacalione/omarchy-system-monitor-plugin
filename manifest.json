@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "k3v.hardware",
+  "name": "System Monitor",
+  "version": "1.0.0",
+  "author": "k3v",
+  "description": "A quick hardware and system overview for the Omarchy bar",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "System Monitor",
+    "description": "Hardware overview panel",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
