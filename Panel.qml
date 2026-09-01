@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -12,6 +14,76 @@ Panel {
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
 
+  property bool gpuAvailable: false
+  property string gpuModel: "—"
+  property string gpuTemperature: "—"
+  property string gpuUtilization: "—"
+  property string gpuVramUsed: "—"
+  property string gpuVramTotal: "—"
+  property string gpuPowerDraw: "—"
+  property string gpuPowerLimit: "—"
+  property string gpuFanSpeed: "—"
+  property string gpuGraphicsClock: "—"
+  property string gpuMemoryClock: "—"
+  property string gpuDriverVersion: "—"
+
+  function safeValue(raw) {
+    var value = raw === undefined || raw === null ? "" : String(raw).trim()
+    return value === "" ? "—" : value
+  }
+
+  function setGpuUnavailable(reason) {
+    root.gpuAvailable = false
+    root.gpuModel = "—"
+    root.gpuTemperature = "—"
+    root.gpuUtilization = "—"
+    root.gpuVramUsed = "—"
+    root.gpuVramTotal = "—"
+    root.gpuPowerDraw = "—"
+    root.gpuPowerLimit = "—"
+    root.gpuFanSpeed = "—"
+    root.gpuGraphicsClock = "—"
+    root.gpuMemoryClock = "—"
+    root.gpuDriverVersion = "—"
+    if (reason && reason !== "") root.gpuModel = "Unavailable"
+  }
+
+  function handleGpuFailure(message) {
+    if (message && message !== "") console.warn("k3v.hardware: " + message)
+    root.setGpuUnavailable(message)
+  }
+
+  function updateGpuState(rawText) {
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.handleGpuFailure("nvidia-smi returned no output")
+      return
+    }
+
+    var values = text.split(",")
+    if (values.length < 11) {
+      root.handleGpuFailure("nvidia-smi output was malformed")
+      return
+    }
+
+    root.gpuAvailable = true
+    root.gpuModel = root.safeValue(values[0])
+    root.gpuTemperature = root.safeValue(values[1]) + "°C"
+    root.gpuUtilization = root.safeValue(values[2]) + "%"
+    root.gpuVramUsed = root.safeValue(values[3]) + " MiB"
+    root.gpuVramTotal = root.safeValue(values[4]) + " MiB"
+    root.gpuPowerDraw = root.safeValue(values[5]) + " W"
+    root.gpuPowerLimit = root.safeValue(values[6]) + " W"
+    root.gpuFanSpeed = root.safeValue(values[7]) + "%"
+    root.gpuGraphicsClock = root.safeValue(values[8]) + " MHz"
+    root.gpuMemoryClock = root.safeValue(values[9]) + " MHz"
+    root.gpuDriverVersion = root.safeValue(values[10])
+  }
+
+  function refresh() {
+    if (root.opened && !gpuProc.running) gpuProc.running = true
+  }
+
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.5)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -20,68 +92,110 @@ Panel {
     {
       title: "Overview",
       rows: [
-        { label: "Status", value: "Healthy" },
-        { label: "Uptime", value: "18h 42m" },
-        { label: "Load", value: "42%" }
+        { label: "Status", value: root.gpuAvailable ? "Active" : "Unavailable" },
+        { label: "GPU", value: root.gpuModel },
+        { label: "Driver", value: root.gpuDriverVersion }
       ]
     },
     {
       title: "CPU",
       rows: [
-        { label: "Model", value: "AMD Ryzen 7" },
-        { label: "Usage", value: "38%" },
-        { label: "Temp", value: "58°C" }
+        { label: "Model", value: "—" },
+        { label: "Usage", value: "—" },
+        { label: "Temp", value: "—" }
       ]
     },
     {
       title: "GPU",
       rows: [
-        { label: "Model", value: "Radeon RX 7800 XT" },
-        { label: "Usage", value: "41%" },
-        { label: "VRAM", value: "16 GB" }
+        { label: "Model", value: root.gpuModel },
+        { label: "Utilization", value: root.gpuUtilization },
+        { label: "Temperature", value: root.gpuTemperature },
+        { label: "VRAM used", value: root.gpuVramUsed },
+        { label: "VRAM total", value: root.gpuVramTotal },
+        { label: "Power draw", value: root.gpuPowerDraw },
+        { label: "Power limit", value: root.gpuPowerLimit },
+        { label: "Fan speed", value: root.gpuFanSpeed },
+        { label: "Graphics clock", value: root.gpuGraphicsClock },
+        { label: "Memory clock", value: root.gpuMemoryClock },
+        { label: "Driver", value: root.gpuDriverVersion }
       ]
     },
     {
       title: "Memory",
       rows: [
-        { label: "Used", value: "22.4 GB" },
-        { label: "Available", value: "11.8 GB" },
-        { label: "Swap", value: "0.0 GB" }
+        { label: "Used", value: "—" },
+        { label: "Available", value: "—" },
+        { label: "Swap", value: "—" }
       ]
     },
     {
       title: "Processes",
       rows: [
-        { label: "Active", value: "286" },
-        { label: "Threads", value: "1,930" },
-        { label: "Top", value: "btop" }
+        { label: "Active", value: "—" },
+        { label: "Threads", value: "—" },
+        { label: "Top", value: "—" }
       ]
     },
     {
       title: "Storage",
       rows: [
-        { label: "Root", value: "71%" },
-        { label: "Free", value: "354 GB" },
-        { label: "SSD", value: "NVMe" }
+        { label: "Root", value: "—" },
+        { label: "Free", value: "—" },
+        { label: "SSD", value: "—" }
       ]
     },
     {
       title: "Hardware",
       rows: [
-        { label: "Board", value: "Custom" },
-        { label: "Kernel", value: "Linux 6.12" },
-        { label: "Power", value: "AC" }
+        { label: "Board", value: "—" },
+        { label: "Kernel", value: "—" },
+        { label: "Power", value: "—" }
       ]
     },
     {
       title: "Services",
       rows: [
-        { label: "Network", value: "Online" },
-        { label: "Audio", value: "Ready" },
-        { label: "Display", value: "Normal" }
+        { label: "Network", value: "—" },
+        { label: "Audio", value: "—" },
+        { label: "Display", value: "—" }
       ]
     }
   ]
+
+  onOpenedChanged: {
+    if (opened) root.refresh()
+  }
+
+  Process {
+    id: gpuProc
+    command: [
+      "nvidia-smi",
+      "--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,fan.speed,clocks.gr,clocks.mem,driver_version",
+      "--format=csv,noheader,nounits"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateGpuState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var msg = String(text || "").trim()
+        if (msg !== "") root.handleGpuFailure(msg)
+      }
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.handleGpuFailure("nvidia-smi exited with code " + exitCode)
+    }
+  }
+
+  Timer {
+    interval: 1000
+    running: root.opened
+    repeat: true
+    onTriggered: root.refresh()
+  }
 
   function open() {
     setCenterHoverRevealSuppressed(false)
@@ -176,7 +290,7 @@ Panel {
               }
 
               Text {
-                text: "Placeholder"
+                text: root.gpuAvailable ? "Live GPU" : "Unavailable"
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
