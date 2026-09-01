@@ -12,3 +12,10 @@
 - Kept polling limited to the active panel and stopped it when closed
 - Added graceful handling for command failure and unavailable values (`—`)
 - Updated plugin version to `0.2.0`
+
+## Fix Milestone 2 — repair System Monitor popup lifecycle
+- Matched the plugin to Omarchy's first-party rich bar-widget pattern
+- Switched the bar entry point to `Panel.qml` directly
+- Removed the wrapper `BarWidget.qml` loader architecture that did not expose the correct lifecycle to the bar
+- Kept the NVIDIA GPU polling active only while the panel is open
+- Preserved graceful `—` values on command failure

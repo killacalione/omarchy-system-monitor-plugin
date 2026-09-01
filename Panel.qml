@@ -8,11 +8,6 @@ Panel {
   id: root
   moduleName: "k3v.hardware"
   ipcTarget: "k3v.hardware"
-  manageIpc: false
-
-  property var anchorItem: null
-  property var hostWidget: null
-  readonly property var barIdentity: hostWidget || root
 
   property bool gpuAvailable: false
   property string gpuModel: "—"
@@ -26,6 +21,10 @@ Panel {
   property string gpuGraphicsClock: "—"
   property string gpuMemoryClock: "—"
   property string gpuDriverVersion: "—"
+
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color dim: Qt.darker(foreground, 1.5)
+  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   function safeValue(raw) {
     var value = raw === undefined || raw === null ? "" : String(raw).trim()
@@ -83,10 +82,6 @@ Panel {
   function refresh() {
     if (root.opened && !gpuProc.running) gpuProc.running = true
   }
-
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color dim: Qt.darker(foreground, 1.5)
-  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property var sections: [
     {
@@ -197,12 +192,18 @@ Panel {
     onTriggered: root.refresh()
   }
 
+  function setCenterHoverRevealSuppressed(value) {
+    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+      root.bar.centerHoverRevealSuppressed = value
+  }
+
   function open() {
     setCenterHoverRevealSuppressed(false)
     root.controller.show()
     Qt.callLater(function() {
       if (root.opened) setCenterHoverRevealSuppressed(true)
     })
+    root.refresh()
   }
 
   function close() {
@@ -217,28 +218,28 @@ Panel {
 
   function switchPanel(direction) {
     if (root.bar && typeof root.bar.switchPanelFrom === "function")
-      return root.bar.switchPanelFrom(root.barIdentity, direction)
+      return root.bar.switchPanelFrom(root, direction)
     return false
   }
 
-  function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
-      root.bar.centerHoverRevealSuppressed = value
-  }
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
 
-  IpcHandler {
-    target: "k3v.hardware"
-
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.toggle() }
+  BarIconButton {
+    id: button
+    anchors.fill: parent
+    bar: root.bar
+    text: ""
+    tooltipText: "System Monitor"
+    onPressed: function(b) {
+      if (b === Qt.RightButton) root.close()
+      else root.toggle()
+    }
   }
 
   KeyboardPanel {
     id: panel
-    anchorItem: root.anchorItem
+    anchorItem: button
     owner: root
     bar: root.bar
     open: root.opened
