@@ -1,5 +1,11 @@
 # Changelog
 
+## Milestone 3 — CPU/RAM/temperature telemetry
+- Added live CPU model, CPU usage, and CPU temperature telemetry from `/proc/cpuinfo`, `/proc/stat`, and the detected `hwmon` temperature sensor
+- Added live memory usage and swap totals from `/proc/meminfo`, using `MemTotal - MemAvailable` for used memory and `SwapTotal - SwapFree` for swap usage
+- Kept CPU/RAM/temp polling active only while the panel is open and gracefully fall back to `—` when a source is unavailable
+- Updated the plugin version to `0.3.0`
+
 ## Milestone 1 — Shell/plugin foundation
 - Initial Omarchy third-party bar widget for System Monitor
 - Added valid `manifest.json` for `k3v.hardware`

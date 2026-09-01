@@ -22,6 +22,16 @@ Panel {
   property string gpuMemoryClock: "—"
   property string gpuDriverVersion: "—"
 
+  property string cpuModel: "—"
+  property string cpuUsage: "—"
+  property string cpuTemperature: "—"
+  property string memoryUsed: "—"
+  property string memoryAvailable: "—"
+  property string memorySwap: "—"
+
+  property real cpuTotalLast: NaN
+  property real cpuIdleLast: NaN
+
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.5)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -29,6 +39,12 @@ Panel {
   function safeValue(raw) {
     var value = raw === undefined || raw === null ? "" : String(raw).trim()
     return value === "" ? "—" : value
+  }
+
+  function formatGiB(kib) {
+    if (kib === undefined || kib === null || isNaN(Number(kib))) return "—"
+    var value = Number(kib) / (1024 * 1024)
+    return value.toFixed(1)
   }
 
   function setGpuUnavailable(reason) {
@@ -79,8 +95,73 @@ Panel {
     root.gpuDriverVersion = root.safeValue(values[10])
   }
 
+  function updateCpuState(rawText) {
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.cpuModel = "—"
+      root.cpuUsage = "—"
+      root.cpuTemperature = "—"
+      root.memoryUsed = "—"
+      root.memoryAvailable = "—"
+      root.memorySwap = "—"
+      console.warn("k3v.hardware: CPU telemetry returned no output")
+      return
+    }
+
+    var values = text.split(",")
+    if (values.length < 8) {
+      console.warn("k3v.hardware: CPU telemetry output was malformed")
+      root.cpuModel = "—"
+      root.cpuUsage = "—"
+      root.cpuTemperature = "—"
+      root.memoryUsed = "—"
+      root.memoryAvailable = "—"
+      root.memorySwap = "—"
+      return
+    }
+
+    var model = root.safeValue(values[0])
+    var total = Number(values[1])
+    var idle = Number(values[2])
+    var tempC = Number(values[3])
+    var memTotal = Number(values[4])
+    var memAvailable = Number(values[5])
+    var swapTotal = Number(values[6])
+    var swapFree = Number(values[7])
+
+    root.cpuModel = model
+    if (!isNaN(tempC)) root.cpuTemperature = Math.round(tempC) + "°C"
+    else root.cpuTemperature = "—"
+
+    if (!isNaN(total) && !isNaN(idle) && !isNaN(root.cpuTotalLast) && !isNaN(root.cpuIdleLast)) {
+      var totalDelta = total - root.cpuTotalLast
+      var idleDelta = idle - root.cpuIdleLast
+      if (totalDelta > 0) {
+        var pct = 100 * (totalDelta - idleDelta) / totalDelta
+        root.cpuUsage = Math.max(0, Math.min(100, pct)).toFixed(0) + "%"
+      } else {
+        root.cpuUsage = "—"
+      }
+    } else {
+      root.cpuUsage = "—"
+    }
+
+    root.cpuTotalLast = total
+    root.cpuIdleLast = idle
+
+    var usedKiB = Math.max(0, memTotal - memAvailable)
+    var swapUsedKiB = Math.max(0, swapTotal - swapFree)
+
+    root.memoryUsed = root.formatGiB(usedKiB) + " / " + root.formatGiB(memTotal) + " GiB"
+    root.memoryAvailable = root.formatGiB(memAvailable) + " GiB"
+    if (swapTotal > 0) root.memorySwap = root.formatGiB(swapUsedKiB) + " / " + root.formatGiB(swapTotal) + " GiB"
+    else root.memorySwap = "None"
+  }
+
   function refresh() {
-    if (root.opened && !gpuProc.running) gpuProc.running = true
+    if (!root.opened) return
+    if (!gpuProc.running) gpuProc.running = true
+    if (!cpuProc.running) cpuProc.running = true
   }
 
   readonly property var sections: [
@@ -95,9 +176,9 @@ Panel {
     {
       title: "CPU",
       rows: [
-        { label: "Model", value: "—" },
-        { label: "Usage", value: "—" },
-        { label: "Temp", value: "—" }
+        { label: "Model", value: root.cpuModel },
+        { label: "Usage", value: root.cpuUsage },
+        { label: "Temp", value: root.cpuTemperature }
       ]
     },
     {
@@ -119,9 +200,9 @@ Panel {
     {
       title: "Memory",
       rows: [
-        { label: "Used", value: "—" },
-        { label: "Available", value: "—" },
-        { label: "Swap", value: "—" }
+        { label: "Used", value: root.memoryUsed },
+        { label: "Available", value: root.memoryAvailable },
+        { label: "Swap", value: root.memorySwap }
       ]
     },
     {
@@ -160,6 +241,107 @@ Panel {
 
   onOpenedChanged: {
     if (opened) root.refresh()
+    else {
+      gpuProc.running = false
+      cpuProc.running = false
+    }
+  }
+
+  Process {
+    id: cpuProc
+    command: [
+      "bash",
+      "-lc",
+      "python3 - <<'PY'\n" +
+      "import glob, os, re, sys\n" +
+      "model=''\n" +
+      "text=''\n" +
+      "try:\n" +
+      "    text=open('/proc/cpuinfo','r',encoding='utf-8',errors='replace').read()\n" +
+      "except Exception:\n" +
+      "    text=''\n" +
+      "for block in text.split('\\n\\n'):\n" +
+      "    for line in block.splitlines():\n" +
+      "        if line.startswith('model name'):\n" +
+      "            model=line.split(':',1)[1].strip(); break\n" +
+      "    if model:\n" +
+      "        break\n" +
+      "values=open('/proc/stat','r',encoding='utf-8',errors='replace').read().splitlines()[0].split(); total=0; idle=0\n" +
+      "if len(values) >= 6:\n" +
+      "    total=sum(float(v) for v in values[1:9]); idle=float(values[4])+float(values[5])\n" +
+      "mem_total=mem_available=swap_total=swap_free=0\n" +
+      "for line in open('/proc/meminfo','r',encoding='utf-8',errors='replace').read().splitlines():\n" +
+      "    if ':' not in line:\n" +
+      "        continue\n" +
+      "    key, value = line.split(':', 1)\n" +
+      "    value = value.strip()\n" +
+      "    if not value:\n" +
+      "        continue\n" +
+      "    value_number = value.split()[0]\n" +
+      "    if key == 'MemTotal':\n" +
+      "        mem_total=float(value_number)\n" +
+      "    elif key == 'MemAvailable':\n" +
+      "        mem_available=float(value_number)\n" +
+      "    elif key == 'SwapTotal':\n" +
+      "        swap_total=float(value_number)\n" +
+      "    elif key == 'SwapFree':\n" +
+      "        swap_free=float(value_number)\n" +
+      "candidates=[]\n" +
+      "for hwmon in sorted(glob.glob('/sys/class/hwmon/hwmon*')):\n" +
+      "    name=open(os.path.join(hwmon,'name'),'r',encoding='utf-8',errors='replace').read().strip().lower(); labels={}\n" +
+      "    for label_path in glob.glob(os.path.join(hwmon,'temp*_label')):\n" +
+      "        m=re.search(r'temp(\\d+)_label', os.path.basename(label_path))\n" +
+      "        if m:\n" +
+      "            labels[m.group(1)] = open(label_path,'r',encoding='utf-8',errors='replace').read().strip().lower()\n" +
+      "    for input_path in glob.glob(os.path.join(hwmon,'temp*_input')):\n" +
+      "        m=re.search(r'temp(\\d+)_input', os.path.basename(input_path))\n" +
+      "        if not m:\n" +
+      "            continue\n" +
+      "        label=labels.get(m.group(1), '').lower()\n" +
+      "        try:\n" +
+      "            temp_value=float(open(input_path,'r',encoding='utf-8',errors='replace').read().strip())/1000.0\n" +
+      "        except ValueError:\n" +
+      "            continue\n" +
+      "        score=0\n" +
+      "        if name=='k10temp':\n" +
+      "            score += 10\n" +
+      "        elif 'coretemp' in name:\n" +
+      "            score += 9\n" +
+      "        elif 'cpu' in name:\n" +
+      "            score += 5\n" +
+      "        if 'tdie' in label:\n" +
+      "            score += 12\n" +
+      "        elif 'tctl' in label:\n" +
+      "            score += 10\n" +
+      "        elif 'package' in label:\n" +
+      "            score += 8\n" +
+      "        elif 'cpu' in label:\n" +
+      "            score += 7\n" +
+      "        elif 'core' in label:\n" +
+      "            score += 5\n" +
+      "        candidates.append((score, temp_value, label))\n" +
+      "temp_c=None\n" +
+      "if candidates:\n" +
+      "    temp_c=max(candidates, key=lambda item:item[0])[1]\n" +
+      "else:\n" +
+      "    sys.stderr.write('k3v.hardware: no usable CPU temperature sensor found under /sys/class/hwmon (searched Tdie/Tctl/k10temp/coretemp candidates)\\n')\n" +
+      "print(','.join([str(model), str(total), str(idle), 'nan' if temp_c is None else str(temp_c), str(mem_total), str(mem_available), str(swap_total), str(swap_free)]))\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateCpuState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var msg = String(text || "").trim()
+        if (msg !== "") console.warn("k3v.hardware: " + msg)
+      }
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) console.warn("k3v.hardware: CPU telemetry process exited with code " + exitCode)
+    }
   }
 
   Process {
