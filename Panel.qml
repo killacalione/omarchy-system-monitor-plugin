@@ -54,6 +54,18 @@ Panel {
     { label: "Source", value: root.storageSource }
   ]
 
+  property string hardwareBoard: "—"
+  property string hardwareBios: "—"
+  property string hardwareFirmware: "—"
+  property string hardwareKernel: "—"
+  property string hardwareArch: "—"
+  property string hardwarePower: "Not exposed"
+  property int hardwarePciCount: 0
+  property var hardwarePci: []
+  property var pciRows: []
+  property string hardwareError: ""
+  property bool hardwareCollectorBusy: false
+
   property real cpuTotalLast: NaN
   property real cpuIdleLast: NaN
 
@@ -335,6 +347,107 @@ Panel {
     root.setStorageUnavailable(message)
   }
 
+  function setHardwareUnavailable(reason) {
+    root.hardwareBoard = "—"
+    root.hardwareBios = "—"
+    root.hardwareFirmware = "—"
+    root.hardwareKernel = "—"
+    root.hardwareArch = "—"
+    root.hardwarePower = "Not exposed"
+    root.hardwarePciCount = 0
+    root.hardwarePci = []
+    root.pciRows = []
+    if (!root.opened) {
+      root.hardwareError = ""
+      root.hardwareCollectorBusy = false
+      return
+    }
+    if (reason && reason !== "") {
+      if (root.hardwareError !== reason) {
+        console.warn("k3v.hardware: " + reason)
+        root.hardwareError = reason
+      }
+    } else {
+      root.hardwareError = ""
+    }
+  }
+
+  function handleHardwareFailure(message) {
+    root.setHardwareUnavailable(message)
+  }
+
+  function updateHardwareState(rawText) {
+    if (!root.opened) {
+      root.hardwareCollectorBusy = false
+      return
+    }
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.handleHardwareFailure("Hardware telemetry returned no output")
+      return
+    }
+
+    var data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      root.handleHardwareFailure("Hardware telemetry JSON was malformed")
+      return
+    }
+
+    if (!data || typeof data !== "object") {
+      root.handleHardwareFailure("Hardware telemetry payload was invalid")
+      return
+    }
+
+    if (typeof data.error === "string" && data.error !== "") {
+      root.handleHardwareFailure("Hardware telemetry failed: " + data.error)
+      return
+    }
+
+    var system = data.system && typeof data.system === "object" ? data.system : {}
+    var board = root.safeValue(system.board)
+    if (board === "—") {
+      var vendor = root.safeValue(system.boardVendor)
+      var name = root.safeValue(system.boardName)
+      var version = root.safeValue(system.boardVersion)
+      if (vendor !== "—" || name !== "—") {
+        board = [vendor, name].filter(function(value) { return value !== "—" && value !== ""; }).join(" ").trim() || "—"
+      }
+      if (board === "—" && version !== "—") board = version
+    }
+    root.hardwareBoard = board !== "—" ? board : "—"
+    root.hardwareBios = root.safeValue(system.biosVersion)
+    root.hardwareFirmware = root.safeValue(system.firmwareMode)
+    root.hardwareKernel = root.safeValue(system.kernelRelease)
+    root.hardwareArch = root.safeValue(system.architecture)
+    root.hardwarePower = system.powerTelemetry === true ? "Available" : "Not exposed"
+
+    var pciItems = Array.isArray(data.filtered) ? data.filtered : (Array.isArray(data.pci) ? data.pci : [])
+    root.hardwarePci = pciItems
+    root.hardwarePciCount = pciItems.length
+    var rows = []
+    for (var i = 0; i < pciItems.length; ++i) {
+      var item = pciItems[i]
+      if (!item || typeof item !== "object") continue
+      var name = root.safeValue(item.name)
+      if (name === "—") name = root.safeValue(item.device)
+      var detailParts = []
+      if (item.address && String(item.address).trim() !== "") detailParts.push(String(item.address).trim())
+      if (item.driver && String(item.driver).trim() !== "") detailParts.push(String(item.driver).trim())
+      if (item.currentLinkWidth && Number(item.currentLinkWidth) > 0) {
+        detailParts.push("x" + String(Number(item.currentLinkWidth)))
+      }
+      if (item.currentLinkSpeed && String(item.currentLinkSpeed).trim() !== "") {
+        detailParts.push(String(item.currentLinkSpeed).trim())
+      }
+      if (detailParts.length === 0) detailParts.push("PCI device")
+      rows.push({ title: name, detail: detailParts.join(" · ") })
+    }
+    root.pciRows = rows
+    root.hardwareError = ""
+  }
+
   function updateStorageState(rawText) {
     if (!root.opened) {
       root.storageAvailable = false
@@ -433,6 +546,10 @@ Panel {
       root.storageCollectorBusy = true
       storageProc.running = true
     }
+    if (!root.hardwareCollectorBusy && !hardwareProc.running) {
+      root.hardwareCollectorBusy = true
+      hardwareProc.running = true
+    }
   }
 
   readonly property var sections: [
@@ -483,9 +600,13 @@ Panel {
     {
       title: "Hardware",
       rows: [
-        { label: "Board", value: "—" },
-        { label: "Kernel", value: "—" },
-        { label: "Power", value: "—" }
+        { label: "Board", value: root.hardwareBoard },
+        { label: "BIOS", value: root.hardwareBios },
+        { label: "Firmware", value: root.hardwareFirmware },
+        { label: "Kernel", value: root.hardwareKernel },
+        { label: "Arch", value: root.hardwareArch },
+        { label: "PCI devices", value: String(root.hardwarePciCount) },
+        { label: "Power", value: root.hardwarePower }
       ]
     },
     {
@@ -505,10 +626,13 @@ Panel {
       cpuProc.running = false
       processProc.running = false
       storageProc.running = false
+      hardwareProc.running = false
       root.processCollectorBusy = false
       root.storageCollectorBusy = false
+      root.hardwareCollectorBusy = false
       root.processError = ""
       root.storageError = ""
+      root.hardwareError = ""
     }
   }
 
@@ -771,6 +895,215 @@ Panel {
     }
     onExited: function(exitCode) {
       if (root.opened && exitCode !== 0) root.handleGpuFailure("nvidia-smi exited with code " + exitCode)
+    }
+  }
+
+  Process {
+    id: hardwareProc
+    command: [
+      "bash",
+      "-lc",
+      "python3 - <<'PY'\n" +
+      "import json, os, re, shlex, subprocess\n" +
+      "\n" +
+      "def read_text(path):\n" +
+      "    try:\n" +
+      "        with open(path, 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "            return fh.read().strip()\n" +
+      "    except (FileNotFoundError, PermissionError, OSError):\n" +
+      "        return ''\n" +
+      "\n" +
+      "def clean_value(value):\n" +
+      "    if value is None:\n" +
+      "        return ''\n" +
+      "    value = str(value).strip()\n" +
+      "    return value.replace('\\x00', '')\n" +
+      "\n" +
+      "def clean_name(value):\n" +
+      "    value = clean_value(value)\n" +
+      "    if not value:\n" +
+      "        return ''\n" +
+      "    no_suffix = re.sub(r'\\s+\\[[^\\]]+\\]$', '', value).strip()\n" +
+      "    inner = ''\n" +
+      "    if '[' in value and value.endswith(']'):\n" +
+      "        inner = value.split('[', 1)[1][:-1].strip()\n" +
+      "    if no_suffix and re.search(r'(Controller|Adapter|Ethernet|Wireless|Audio|USB|SATA|NVMe|Network|Compatible|PCIe|HD)', no_suffix, re.I):\n" +
+      "        return no_suffix\n" +
+      "    if inner and not re.fullmatch(r'[0-9A-Fa-fxX]+', inner):\n" +
+      "        return inner\n" +
+      "    return no_suffix or value\n" +
+      "\n" +
+      "def parse_width(value):\n" +
+      "    clean = clean_value(value)\n" +
+      "    if not clean:\n" +
+      "        return None\n" +
+      "    try:\n" +
+      "        return int(float(clean))\n" +
+      "    except ValueError:\n" +
+      "        return None\n" +
+      "\n" +
+      "def dmi_value(name):\n" +
+      "    if not os.path.isdir('/sys/class/dmi/id'):\n" +
+      "        return ''\n" +
+      "    value = read_text(os.path.join('/sys/class/dmi/id', name))\n" +
+      "    if value == 'To Be Filled By O.E.M.':\n" +
+      "        return ''\n" +
+      "    if value and value.lower() == 'unknown':\n" +
+      "        return ''\n" +
+      "    return value\n" +
+      "\n" +
+      "dmi_dir = '/sys/class/dmi/id' if os.path.isdir('/sys/class/dmi/id') else '/sys/devices/virtual/dmi/id'\n" +
+      "if os.path.isdir(dmi_dir):\n" +
+      "    dmi_lookup = {key: read_text(os.path.join(dmi_dir, key)) for key in os.listdir(dmi_dir) if os.path.isfile(os.path.join(dmi_dir, key))}\n" +
+      "else:\n" +
+      "    dmi_lookup = {}\n" +
+      "\n" +
+      "for key in ('board_vendor', 'board_name', 'board_version', 'bios_vendor', 'bios_version', 'bios_date', 'sys_vendor', 'product_name', 'product_version'):\n" +
+      "    value = clean_value(dmi_lookup.get(key, ''))\n" +
+      "    if value in {'', 'To Be Filled By O.E.M.', 'Unknown', 'unknown'}:\n" +
+      "        dmi_lookup[key] = ''\n" +
+      "    else:\n" +
+      "        dmi_lookup[key] = value\n" +
+      "\n" +
+      "board_vendor = clean_name(dmi_lookup.get('board_vendor') or '')\n" +
+      "board_name = clean_name(dmi_lookup.get('board_name') or '')\n" +
+      "board_version = clean_name(dmi_lookup.get('board_version') or '')\n" +
+      "bios_vendor = clean_name(dmi_lookup.get('bios_vendor') or '')\n" +
+      "bios_version = clean_name(dmi_lookup.get('bios_version') or '')\n" +
+      "bios_date = clean_name(dmi_lookup.get('bios_date') or '')\n" +
+      "board = ''\n" +
+      "if board_vendor and board_name and board_vendor.lower() not in board_name.lower():\n" +
+      "    board = f'{board_vendor} {board_name}'\n" +
+      "elif board_name:\n" +
+      "    board = board_name\n" +
+      "elif board_vendor:\n" +
+      "    board = board_vendor\n" +
+      "\n" +
+      "power_sources = []\n" +
+      "power_dir = '/sys/class/power_supply'\n" +
+      "if os.path.isdir(power_dir):\n" +
+      "    power_sources = sorted(os.listdir(power_dir))\n" +
+      "power_telemetry = any((name.lower().startswith(('ac', 'psu', 'ups', 'adapter')) or ('psu' in name.lower())) for name in power_sources)\n" +
+      "\n" +
+      "pci_raw = []\n" +
+      "try:\n" +
+      "    lspci_out = subprocess.check_output(['lspci', '-D', '-nn', '-mm', '-k'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'})\n" +
+      "except Exception as exc:\n" +
+      "    lspci_out = ''\n" +
+      "\n" +
+      "for line in lspci_out.splitlines():\n" +
+      "    line = line.strip()\n" +
+      "    if not line:\n" +
+      "        continue\n" +
+      "    if ' ' not in line:\n" +
+      "        continue\n" +
+      "    address, _, remainder = line.partition(' ')\n" +
+      "    if not re.match(r'^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\\.[0-9a-fA-F]$', address):\n" +
+      "        continue\n" +
+      "    try:\n" +
+      "        tokens = shlex.split(remainder)\n" +
+      "    except ValueError:\n" +
+      "        continue\n" +
+      "    if len(tokens) < 3:\n" +
+      "        continue\n" +
+      "    class_name = re.sub(r'\\s+\\[[0-9A-Fa-f]+\\]$', '', tokens[0]).strip()\n" +
+      "    vendor_name = re.sub(r'\\s+\\[[0-9A-Fa-f]+\\]$', '', tokens[1]).strip()\n" +
+      "    device_name = re.sub(r'\\s+\\[[0-9A-Fa-f]+\\]$', '', tokens[2]).strip()\n" +
+      "    driver = ''\n" +
+      "    driver_link = '/sys/bus/pci/devices/' + address + '/driver'\n" +
+      "    if os.path.islink(driver_link):\n" +
+      "        try:\n" +
+      "            driver = os.path.basename(os.readlink(driver_link))\n" +
+      "        except OSError:\n" +
+      "            driver = ''\n" +
+      "    base = '/sys/bus/pci/devices/' + address\n" +
+      "    current_speed = read_text(os.path.join(base, 'current_link_speed'))\n" +
+      "    max_speed = read_text(os.path.join(base, 'max_link_speed'))\n" +
+      "    current_width = parse_width(read_text(os.path.join(base, 'current_link_width')) )\n" +
+      "    max_width = parse_width(read_text(os.path.join(base, 'max_link_width')) )\n" +
+      "    title = clean_name(device_name) or clean_name(vendor_name) or class_name\n" +
+      "    if vendor_name and title and vendor_name.lower() not in title.lower():\n" +
+      "        title = vendor_name + ' ' + title\n" +
+      "    pci_raw.append({\n" +
+      "        'address': address,\n" +
+      "        'class': class_name or 'Unknown',\n" +
+      "        'vendor': vendor_name,\n" +
+      "        'device': device_name,\n" +
+      "        'name': title,\n" +
+      "        'driver': driver,\n" +
+      "        'currentLinkSpeed': current_speed,\n" +
+      "        'currentLinkWidth': current_width,\n" +
+      "        'maxLinkSpeed': max_speed,\n" +
+      "        'maxLinkWidth': max_width\n" +
+      "    })\n" +
+      "\n" +
+      "filtered = []\n" +
+      "for item in pci_raw:\n" +
+      "    class_name = (item.get('class') or '').lower()\n" +
+      "    name_text = (item.get('name') or '').lower()\n" +
+      "    if any(token in class_name for token in ['host bridge', 'pci bridge', 'isa bridge', 'smbus', 'lpc bridge', 'root complex', 'non-essential instrumentation', 'data fabric', 'dummy host bridge']):\n" +
+      "        continue\n" +
+      "    if 'dummy function' in name_text or 'dummy host bridge' in name_text:\n" +
+      "        continue\n" +
+      "    filtered.append({\n" +
+      "        'address': item.get('address'),\n" +
+      "        'class': item.get('class'),\n" +
+      "        'vendor': item.get('vendor'),\n" +
+      "        'device': item.get('device'),\n" +
+      "        'name': item.get('name'),\n" +
+      "        'driver': item.get('driver'),\n" +
+      "        'currentLinkSpeed': item.get('currentLinkSpeed'),\n" +
+      "        'currentLinkWidth': item.get('currentLinkWidth'),\n" +
+      "        'maxLinkSpeed': item.get('maxLinkSpeed'),\n" +
+      "        'maxLinkWidth': item.get('maxLinkWidth')\n" +
+      "    })\n" +
+      "\n" +
+      "payload = {\n" +
+      "    'system': {\n" +
+      "        'board': board,\n" +
+      "        'boardVendor': board_vendor,\n" +
+      "        'boardName': board_name,\n" +
+      "        'boardVersion': board_version,\n" +
+      "        'biosVendor': bios_vendor,\n" +
+      "        'biosVersion': bios_version,\n" +
+      "        'biosDate': bios_date,\n" +
+      "        'firmwareMode': 'UEFI' if os.path.exists('/sys/firmware/efi') else 'Legacy BIOS',\n" +
+      "        'kernelRelease': os.uname().release,\n" +
+      "        'architecture': os.uname().machine,\n" +
+      "        'powerTelemetry': bool(power_telemetry)\n" +
+      "    },\n" +
+      "    'pci': pci_raw,\n" +
+      "    'filtered': filtered\n" +
+      "}\n" +
+      "print(json.dumps(payload, separators=(',', ':')) )\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateHardwareState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (!root.opened) return
+        var msg = String(text || "").trim()
+        if (msg !== "") {
+          if (root.hardwareError !== msg) {
+            console.warn("k3v.hardware: " + msg)
+            root.hardwareError = msg
+          }
+        }
+      }
+    }
+    onExited: function(exitCode) {
+      root.hardwareCollectorBusy = false
+      if (!root.opened) {
+        root.hardwareError = ""
+        return
+      }
+      if (exitCode !== 0 && root.hardwareError === "") {
+        root.setHardwareUnavailable("Hardware telemetry exited with code " + exitCode)
+      }
     }
   }
 
@@ -1065,6 +1398,58 @@ Panel {
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.bodySmall
                     }
+                  }
+                }
+              }
+            }
+          }
+
+          BorderSurface {
+            width: panelFlick.width
+            color: Util.alpha(Color.popups.background, 0.94)
+            borderSpec: Border.flat(Util.alpha(root.foreground, 0.12), 1)
+            radius: Style.cornerRadius
+            implicitHeight: pciSectionColumn.implicitHeight + Style.space(16)
+            visible: root.hardwarePciCount > 0 || root.hardwareError !== ""
+
+            Column {
+              id: pciSectionColumn
+              width: parent.width
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.space(10)
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "PCI DEVICES"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Repeater {
+                model: root.pciRows.length > 0 ? root.pciRows : [{ title: "—", detail: "—" }]
+                delegate: Column {
+                  width: pciSectionColumn.width
+                  spacing: Style.space(2)
+
+                  Text {
+                    width: parent.width
+                    text: modelData.title
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    width: parent.width
+                    text: modelData.detail
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    elide: Text.ElideRight
                   }
                 }
               }

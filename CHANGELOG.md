@@ -1,5 +1,16 @@
 # Changelog
 
+## Milestone 6 — Hardware and PCI telemetry
+- Added a dedicated read-only hardware collector that gathers motherboard DMI metadata, BIOS/firmware details, kernel and architecture info, and a single-shot hardware inventory pass when the panel opens
+- Reported motherboard vendor/model and BIOS version from unprivileged `/sys/class/dmi/id` data while intentionally excluding serial numbers, UUIDs, and other unique identifiers from the UI and JSON payload
+- Detects UEFI vs. Legacy BIOS mode from `/sys/firmware/efi` and shares kernel release plus machine architecture directly from native interfaces without invoking `sudo` or `dmidecode`
+- Added PCI/PCIe endpoint inventory using `lspci -D -nn -mm -k`, plus sysfs link-speed and width inspection from `/sys/bus/pci/devices/<BDF>` where available
+- Listed meaningful endpoint devices, filtered out host bridges and dummy bridge entries, and surfaced kernel-bound drivers alongside address, class, vendor/model, and link widths/speeds
+- Added a compact PCI devices section below Hardware with a filtered user-visible count and honest handling for missing PCI link data or absent PSU telemetry
+- Kept the hardware collector to one-shot lifecycle behavior on panel open, with no repeated polling while the panel remains open and no hardware collector left running after close
+- Documented the honest limitation that normal desktop systems may expose no real PSU power telemetry; the panel shows `Not exposed` instead of guessing power supply values
+- Updated the plugin version to `0.6.0`
+
 ## Milestone 5 — Storage telemetry
 - Fixed physical-drive binary capacity formatting so live disk rows report the correct GiB scale instead of an off-by-one unit jump
 - Added a dedicated read-only storage collector using `os.statvfs()` for root filesystem usage and `findmnt`/`lsblk` JSON metadata for root identity and physical disk inventory

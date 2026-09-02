@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "k3v.hardware",
   "name": "System Monitor",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": "k3v",
   "description": "A quick hardware and system overview for the Omarchy bar",
   "kinds": [
