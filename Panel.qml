@@ -36,6 +36,24 @@ Panel {
   property string processError: ""
   property bool processCollectorBusy: false
 
+  property string storageRoot: "—"
+  property string storageFree: "—"
+  property string storageUsage: "—"
+  property string storageFilesystem: "—"
+  property string storageSource: "—"
+  property bool storageAvailable: false
+  property var storageDrives: []
+  property var driveRows: ["—"]
+  property string storageError: ""
+  property bool storageCollectorBusy: false
+  property var storageRows: [
+    { label: "Root", value: root.storageRoot },
+    { label: "Free", value: root.storageFree },
+    { label: "Usage", value: root.storageUsage },
+    { label: "Filesystem", value: root.storageFilesystem },
+    { label: "Source", value: root.storageSource }
+  ]
+
   property real cpuTotalLast: NaN
   property real cpuIdleLast: NaN
 
@@ -52,6 +70,34 @@ Panel {
     if (kib === undefined || kib === null || isNaN(Number(kib))) return "—"
     var value = Number(kib) / (1024 * 1024)
     return value.toFixed(1)
+  }
+
+  function storageUnitFor(bytes) {
+    var value = Number(bytes)
+    if (isNaN(value) || value < 0) return "GiB"
+    return value >= 1024 * 1024 * 1024 * 1024 ? "TiB" : "GiB"
+  }
+
+  function formatStorageValue(bytes, unit) {
+    var value = Number(bytes)
+    if (isNaN(value) || value < 0) return "—"
+    var target = unit === "TiB" ? 1024 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024
+    var scaled = value / target
+    return scaled.toFixed(1)
+  }
+
+  function formatStorageSize(bytes) {
+    if (bytes === undefined || bytes === null || isNaN(Number(bytes))) return "—"
+    var value = Number(bytes)
+    if (value < 0) value = 0
+    var units = ["KiB", "MiB", "GiB", "TiB"]
+    var unitIndex = 0
+    var scaled = value
+    while (scaled >= 1024 && unitIndex < units.length - 1) {
+      scaled /= 1024
+      unitIndex += 1
+    }
+    return scaled.toFixed(1) + " " + units[unitIndex]
   }
 
   function setGpuUnavailable(reason) {
@@ -251,6 +297,126 @@ Panel {
     root.processRows = rows
   }
 
+  function setStorageUnavailable(reason) {
+    root.storageAvailable = false
+    root.storageRoot = "—"
+    root.storageFree = "—"
+    root.storageUsage = "—"
+    root.storageFilesystem = "—"
+    root.storageSource = "—"
+    root.storageRows = [
+      { label: "Root", value: root.storageRoot },
+      { label: "Free", value: root.storageFree },
+      { label: "Usage", value: root.storageUsage },
+      { label: "Filesystem", value: root.storageFilesystem },
+      { label: "Source", value: root.storageSource }
+    ]
+    root.storageDrives = []
+    root.driveRows = ["—"]
+    if (!root.opened) {
+      root.storageError = ""
+      return
+    }
+    if (reason && reason !== "") {
+      if (root.storageError !== reason) {
+        console.warn("k3v.hardware: " + reason)
+        root.storageError = reason
+      }
+    } else {
+      root.storageError = ""
+    }
+  }
+
+  function handleStorageFailure(message) {
+    root.setStorageUnavailable(message)
+  }
+
+  function updateStorageState(rawText) {
+    if (!root.opened) {
+      root.storageAvailable = false
+      root.storageRoot = "—"
+      root.storageFree = "—"
+      root.storageUsage = "—"
+      root.storageFilesystem = "—"
+      root.storageSource = "—"
+      root.storageDrives = []
+      root.driveRows = ["—"]
+      root.storageError = ""
+      root.storageCollectorBusy = false
+      return
+    }
+
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.handleStorageFailure("Storage telemetry returned no output")
+      return
+    }
+
+    var data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      root.handleStorageFailure("Storage telemetry JSON was malformed")
+      return
+    }
+
+    if (!data || typeof data !== "object") {
+      root.handleStorageFailure("Storage telemetry payload was invalid")
+      return
+    }
+
+    if (typeof data.error === "string" && data.error !== "") {
+      root.handleStorageFailure("Storage telemetry failed: " + data.error)
+      return
+    }
+
+    var rootPayload = data.root && typeof data.root === "object" ? data.root : {}
+    var totalBytes = Number(rootPayload.totalBytes)
+    var availableBytes = Number(rootPayload.availableBytes)
+    var usedBytes = Number(rootPayload.usedBytes)
+    var usagePercent = Number(rootPayload.usagePercent)
+
+    if (isNaN(totalBytes) || totalBytes <= 0) {
+      root.handleStorageFailure("Storage telemetry did not report a valid root size")
+      return
+    }
+
+    root.storageAvailable = true
+    root.storageError = ""
+    var unit = root.storageUnitFor(totalBytes)
+    root.storageRoot = root.formatStorageValue(usedBytes, unit) + " / " + root.formatStorageValue(totalBytes, unit) + " " + unit
+    root.storageFree = root.formatStorageValue(availableBytes, unit) + " " + unit
+    root.storageUsage = (!isNaN(usagePercent) ? Math.max(0, Math.min(100, usagePercent)).toFixed(0) : "0") + "%"
+    root.storageFilesystem = root.safeValue(rootPayload.filesystem)
+    root.storageSource = root.safeValue(rootPayload.source)
+    root.storageRows = [
+      { label: "Root", value: root.storageRoot },
+      { label: "Free", value: root.storageFree },
+      { label: "Usage", value: root.storageUsage },
+      { label: "Filesystem", value: root.storageFilesystem },
+      { label: "Source", value: root.storageSource }
+    ]
+
+    var rows = []
+    if (Array.isArray(data.drives)) {
+      for (var i = 0; i < data.drives.length; ++i) {
+        var item = data.drives[i]
+        if (!item || typeof item !== "object") continue
+        var name = item.name !== undefined && item.name !== null ? String(item.name).trim() : ""
+        var model = item.model !== undefined && item.model !== null ? String(item.model).trim() : ""
+        var sizeBytes = Number(item.sizeBytes)
+        if (name === "" && model === "") continue
+        if (isNaN(sizeBytes)) continue
+        var label = model !== "" ? model : name
+        var typeText = item.type !== undefined && item.type !== null ? String(item.type).trim() : "Disk"
+        if (typeText === "") typeText = "Disk"
+        rows.push(label + "  " + root.formatStorageSize(sizeBytes) + " · " + typeText)
+      }
+    }
+    root.storageDrives = rows
+    root.driveRows = rows.length > 0 ? rows : ["—"]
+  }
+
   function refresh() {
     if (!root.opened) return
     if (!gpuProc.running) gpuProc.running = true
@@ -258,6 +424,10 @@ Panel {
     if (!root.processCollectorBusy && !processProc.running) {
       root.processCollectorBusy = true
       processProc.running = true
+    }
+    if (!root.storageCollectorBusy && !storageProc.running) {
+      root.storageCollectorBusy = true
+      storageProc.running = true
     }
   }
 
@@ -304,11 +474,7 @@ Panel {
     },
     {
       title: "Storage",
-      rows: [
-        { label: "Root", value: "—" },
-        { label: "Free", value: "—" },
-        { label: "SSD", value: "—" }
-      ]
+      rows: root.storageRows
     },
     {
       title: "Hardware",
@@ -334,8 +500,11 @@ Panel {
       gpuProc.running = false
       cpuProc.running = false
       processProc.running = false
+      storageProc.running = false
       root.processCollectorBusy = false
+      root.storageCollectorBusy = false
       root.processError = ""
+      root.storageError = ""
     }
   }
 
@@ -601,6 +770,106 @@ Panel {
     }
   }
 
+  Process {
+    id: storageProc
+    command: [
+      "bash",
+      "-lc",
+      "LC_ALL=C python3 - <<'PY'\n" +
+      "import json, os, shutil, subprocess\n" +
+      "root_info = {'source': None, 'filesystem': None, 'totalBytes': 0, 'usedBytes': 0, 'availableBytes': 0, 'usagePercent': 0.0}\n" +
+      "try:\n" +
+      "    st = os.statvfs('/')\n" +
+      "    block_size = st.f_frsize or st.f_bsize or 4096\n" +
+      "    total = st.f_blocks * block_size\n" +
+      "    available = st.f_bavail * block_size\n" +
+      "    used = max(0, total - available)\n" +
+      "    root_info['totalBytes'] = int(total)\n" +
+      "    root_info['availableBytes'] = int(available)\n" +
+      "    root_info['usedBytes'] = int(used)\n" +
+      "    root_info['usagePercent'] = round((100.0 * used / total), 1) if total else 0.0\n" +
+      "except Exception:\n" +
+      "    pass\n" +
+      "if shutil.which('findmnt'):\n" +
+      "    try:\n" +
+      "        data = json.loads(subprocess.check_output(['findmnt', '-J', '-T', '/'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "        filesystems = data.get('filesystems') or []\n" +
+      "        if filesystems:\n" +
+      "            first = filesystems[0]\n" +
+      "            if isinstance(first, dict):\n" +
+      "                root_info['source'] = first.get('source') or None\n" +
+      "                root_info['filesystem'] = first.get('fstype') or None\n" +
+      "    except Exception:\n" +
+      "        pass\n" +
+      "drives = []\n" +
+      "if shutil.which('lsblk'):\n" +
+      "    try:\n" +
+      "        data = json.loads(subprocess.check_output(['lsblk', '-J', '-b', '-d', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,ROTA,RM'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "        for item in (data.get('blockdevices') or []):\n" +
+      "            if not isinstance(item, dict):\n" +
+      "                continue\n" +
+      "            name = str(item.get('name') or '').strip()\n" +
+      "            if not name or item.get('type') != 'disk':\n" +
+      "                continue\n" +
+      "            if name.startswith(('zram', 'loop', 'ram', 'dm-')):\n" +
+      "                continue\n" +
+      "            model = str(item.get('model') or '').strip()\n" +
+      "            transport = str(item.get('tran') or '').strip().lower()\n" +
+      "            rotational = bool(item.get('rota'))\n" +
+      "            removable = bool(item.get('rm'))\n" +
+      "            if removable:\n" +
+      "                disk_type = 'Removable'\n" +
+      "            elif transport == 'nvme':\n" +
+      "                disk_type = 'NVMe'\n" +
+      "            elif rotational:\n" +
+      "                disk_type = 'HDD'\n" +
+      "            elif transport in {'sata', 'ata', 'sas', 'usb'}:\n" +
+      "                disk_type = 'SSD'\n" +
+      "            else:\n" +
+      "                disk_type = transport.upper() if transport else 'Disk'\n" +
+      "            size = item.get('size')\n" +
+      "            try:\n" +
+      "                size_value = int(size) if size is not None else 0\n" +
+      "            except (TypeError, ValueError):\n" +
+      "                size_value = 0\n" +
+      "            drives.append({\n" +
+      "                'name': name,\n" +
+      "                'model': model or name,\n" +
+      "                'sizeBytes': size_value,\n" +
+      "                'transport': transport.upper() if transport else 'Disk',\n" +
+      "                'rotational': rotational,\n" +
+      "                'removable': removable,\n" +
+      "                'type': disk_type,\n" +
+      "            })\n" +
+      "    except Exception:\n" +
+      "        pass\n" +
+      "print(json.dumps({'root': root_info, 'drives': drives}, separators=(',', ':')) )\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateStorageState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (!root.opened) return
+        var msg = String(text || "").trim()
+        if (msg !== "") root.handleStorageFailure(msg)
+      }
+    }
+    onExited: function(exitCode) {
+      root.storageCollectorBusy = false
+      if (!root.opened) {
+        root.storageError = ""
+        return
+      }
+      if (exitCode !== 0 && root.storageError === "") {
+        root.setStorageUnavailable("Storage telemetry exited with code " + exitCode)
+      }
+    }
+  }
+
   Timer {
     interval: 1000
     running: root.opened
@@ -614,6 +883,18 @@ Panel {
     repeat: true
     onTriggered: {
       if (!processProc.running) processProc.running = true
+    }
+  }
+
+  Timer {
+    interval: 5000
+    running: root.opened
+    repeat: true
+    onTriggered: {
+      if (!root.storageCollectorBusy && !storageProc.running) {
+        root.storageCollectorBusy = true
+        storageProc.running = true
+      }
     }
   }
 
@@ -761,21 +1042,63 @@ Panel {
                     Text {
                       id: labelText
                       anchors.left: parent.left
+                      width: Math.min(parent.width * 0.42, 150)
                       text: modelData.label
                       color: root.foreground
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body
+                      elide: Text.ElideRight
                     }
 
                     Text {
                       id: valueText
                       anchors.right: parent.right
+                      width: Math.min(parent.width * 0.52, 220)
                       text: modelData.value
                       color: root.dim
+                      horizontalAlignment: Text.AlignRight
+                      elide: Text.ElideRight
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.bodySmall
                     }
                   }
+                }
+              }
+            }
+          }
+
+          BorderSurface {
+            width: panelFlick.width
+            color: Util.alpha(Color.popups.background, 0.94)
+            borderSpec: Border.flat(Util.alpha(root.foreground, 0.12), 1)
+            radius: Style.cornerRadius
+            implicitHeight: driveSectionColumn.implicitHeight + Style.space(16)
+
+            Column {
+              id: driveSectionColumn
+              width: parent.width
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.space(10)
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "DRIVES"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Repeater {
+                model: root.driveRows.length > 0 ? root.driveRows : ["—"]
+                delegate: Text {
+                  width: driveSectionColumn.width
+                  text: modelData
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  elide: Text.ElideRight
                 }
               }
             }

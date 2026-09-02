@@ -1,5 +1,13 @@
 # Changelog
 
+## Milestone 5 — Storage telemetry
+- Added a dedicated read-only storage collector using `os.statvfs()` for root filesystem usage and `findmnt`/`lsblk` JSON metadata for root identity and physical disk inventory
+- Reported root filesystem total, used, available space, filesystem type, source, and usage percentage without altering mounts or partition state
+- Discovered and classified physical drives by model, capacity, transport, and rotational status while filtering out zram/loop/partition entries
+- Added compact dynamic drive rows to the panel and kept storage polling limited to the open panel lifecycle with a 5s refresh interval
+- Kept storage telemetry independent from GPU/CPU/process telemetry and resilient to missing or malformed read-only metadata
+- Updated the plugin version to `0.5.0`
+
 ## Milestone 4 — Process telemetry
 - Added live process count and thread count using `/proc` enumeration and `/proc/[pid]/status` metadata
 - Added top five live CPU consumers based on delta-sampled `/proc/[pid]/stat` and `/proc/stat` totals, normalized to total machine CPU capacity
