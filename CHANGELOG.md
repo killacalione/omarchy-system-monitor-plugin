@@ -1,6 +1,7 @@
 # Changelog
 
 ## Milestone 5 — Storage telemetry
+- Fixed physical-drive binary capacity formatting so live disk rows report the correct GiB scale instead of an off-by-one unit jump
 - Added a dedicated read-only storage collector using `os.statvfs()` for root filesystem usage and `findmnt`/`lsblk` JSON metadata for root identity and physical disk inventory
 - Reported root filesystem total, used, available space, filesystem type, source, and usage percentage without altering mounts or partition state
 - Discovered and classified physical drives by model, capacity, transport, and rotational status while filtering out zram/loop/partition entries

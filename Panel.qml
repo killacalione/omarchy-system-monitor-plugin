@@ -86,11 +86,11 @@ Panel {
     return scaled.toFixed(1)
   }
 
-  function formatStorageSize(bytes) {
+  function formatBinaryBytes(bytes) {
     if (bytes === undefined || bytes === null || isNaN(Number(bytes))) return "—"
     var value = Number(bytes)
     if (value < 0) value = 0
-    var units = ["KiB", "MiB", "GiB", "TiB"]
+    var units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
     var unitIndex = 0
     var scaled = value
     while (scaled >= 1024 && unitIndex < units.length - 1) {
@@ -98,6 +98,10 @@ Panel {
       unitIndex += 1
     }
     return scaled.toFixed(1) + " " + units[unitIndex]
+  }
+
+  function formatStorageSize(bytes) {
+    return root.formatBinaryBytes(bytes)
   }
 
   function setGpuUnavailable(reason) {
