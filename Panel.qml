@@ -100,6 +100,25 @@ Panel {
   property real networkPrevTx: NaN
   property real networkPrevTime: NaN
 
+  property string systemdSystemState: "—"
+  property string systemdUserState: "—"
+  property int systemdSystemLoaded: 0
+  property int systemdSystemActive: 0
+  property int systemdSystemRunning: 0
+  property int systemdSystemFailed: 0
+  property int systemdUserLoaded: 0
+  property int systemdUserActive: 0
+  property int systemdUserRunning: 0
+  property int systemdUserFailed: 0
+  property string systemdAudioSummary: "—"
+  property string systemdDisplaySummary: "—"
+  property string systemdSummary: "—"
+  property var systemdRows: []
+  property var systemdImportantRows: []
+  property var systemdFailedRows: []
+  property string systemdError: ""
+  property bool serviceCollectorBusy: false
+
   property real cpuTotalLast: NaN
   property real cpuIdleLast: NaN
 
@@ -668,6 +687,96 @@ Panel {
     ]
   }
 
+  function updateSystemdState(rawText) {
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.systemdError = "Service telemetry returned no output"
+      return
+    }
+    var data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      root.systemdError = "Service telemetry JSON was malformed"
+      return
+    }
+    if (!data || typeof data !== "object") {
+      root.systemdError = "Service telemetry payload was invalid"
+      return
+    }
+    function managerValue(manager, key) {
+      var value = manager && manager[key]
+      return value === undefined || value === null ? 0 : Number(value)
+    }
+    function managerState(manager) {
+      var value = manager && typeof manager.state === "string" ? manager.state.trim() : ""
+      return value === "" ? "—" : value
+    }
+    function stateLabel(service) {
+      var active = String(service.activeState || "")
+      var sub = String(service.subState || "")
+      if (active === "failed") return "failed"
+      if (active === "active" && sub === "running") return "running"
+      if (active === "active") return "active"
+      return active === "" ? "—" : active
+    }
+    function displayName(service) {
+      var description = String(service.description || "").trim()
+      return description !== "" && description !== service.unit ? description : String(service.unit || "Unknown service")
+    }
+    function scopeLabel(service) {
+      return String(service.scope || "unknown") + " · " + stateLabel(service)
+    }
+    var system = data.systemManager || {}
+    var user = data.userManager || {}
+    root.systemdSystemState = managerState(system)
+    root.systemdUserState = managerState(user)
+    root.systemdSystemLoaded = managerValue(system, "loaded")
+    root.systemdSystemActive = managerValue(system, "active")
+    root.systemdSystemRunning = managerValue(system, "running")
+    root.systemdSystemFailed = managerValue(system, "failed")
+    root.systemdUserLoaded = managerValue(user, "loaded")
+    root.systemdUserActive = managerValue(user, "active")
+    root.systemdUserRunning = managerValue(user, "running")
+    root.systemdUserFailed = managerValue(user, "failed")
+    var importantRows = []
+    var important = Array.isArray(data.importantServices) ? data.importantServices : []
+    for (var i = 0; i < important.length; ++i) {
+      if (important[i] && typeof important[i] === "object")
+        importantRows.push({ title: displayName(important[i]), detail: scopeLabel(important[i]) })
+    }
+    var failedRows = []
+    var failed = Array.isArray(data.failedServices) ? data.failedServices : []
+    for (var j = 0; j < failed.length; ++j) {
+      if (failed[j] && typeof failed[j] === "object")
+        failedRows.push({ title: displayName(failed[j]), detail: scopeLabel(failed[j]) })
+    }
+    root.systemdImportantRows = importantRows
+    root.systemdFailedRows = failedRows
+    var audio = data.audio || {}
+    var pipewire = audio.pipewire
+    var wireplumber = audio.wireplumber
+    var pulse = audio.pipewirePulse
+    var audioPresent = !!pipewire || !!wireplumber || !!pulse
+    var audioHealthy = pipewire && pipewire.activeState === "active" && pipewire.subState === "running" &&
+      wireplumber && wireplumber.activeState === "active" && wireplumber.subState === "running"
+    if (!audioPresent) root.systemdAudioSummary = "—"
+    else if (audioHealthy) root.systemdAudioSummary = "PipeWire · Active"
+    else root.systemdAudioSummary = "Degraded"
+    var display = data.display
+    root.systemdDisplaySummary = display && display.activeState === "active" && display.subState === "running" ? "Hyprland · Active" : "—"
+    root.systemdSummary = root.systemdSystemState === "—" ? "—" :
+      root.systemdSystemState.charAt(0).toUpperCase() + root.systemdSystemState.slice(1) +
+      " · " + (root.systemdSystemFailed + root.systemdUserFailed) + " failed"
+    root.systemdRows = [
+      { label: "System manager", value: root.systemdSystemState },
+      { label: "System services", value: root.systemdSystemActive + " active · " + root.systemdSystemFailed + " failed" },
+      { label: "User manager", value: root.systemdUserState },
+      { label: "User services", value: root.systemdUserActive + " active · " + root.systemdUserFailed + " failed" }
+    ]
+    root.systemdError = ""
+  }
+
   function updateStorageState(rawText) {
     if (!root.opened) {
       root.storageAvailable = false
@@ -796,6 +905,14 @@ Panel {
     }
   }
 
+  function refreshSystemd() {
+    if (!root.opened) return
+    if (!root.serviceCollectorBusy && !serviceProc.running) {
+      root.serviceCollectorBusy = true
+      serviceProc.running = true
+    }
+  }
+
   readonly property var sections: [
     {
       title: "Overview",
@@ -861,9 +978,26 @@ Panel {
       title: "Services",
       rows: [
         { label: "Network", value: root.networkServiceSummary },
-        { label: "Audio", value: "—" },
-        { label: "Display", value: "—" }
+        { label: "Audio", value: root.systemdAudioSummary },
+        { label: "Display", value: root.systemdDisplaySummary },
+        { label: "Systemd", value: root.systemdSummary }
       ]
+    },
+    {
+      title: "Systemd",
+      rows: root.systemdRows
+    },
+    {
+      title: "Important Services",
+      rows: root.systemdImportantRows.length > 0
+        ? root.systemdImportantRows.map(function(item) { return { label: item.title, value: item.detail } })
+        : [{ label: "Services", value: "—" }]
+    },
+    {
+      title: "Failed Services",
+      rows: root.systemdFailedRows.length > 0
+        ? root.systemdFailedRows.map(function(item) { return { label: item.title, value: item.detail } })
+        : [{ label: "Failed", value: "None" }]
     }
   ]
 
@@ -880,13 +1014,16 @@ Panel {
       hardwareProc.running = false
       networkMetaProc.running = false
       networkStatsProc.running = false
+      serviceProc.running = false
       networkMetaTimer.stop()
       networkStatsTimer.stop()
+      serviceTimer.stop()
       root.processCollectorBusy = false
       root.storageCollectorBusy = false
       root.hardwareCollectorBusy = false
       root.networkMetaBusy = false
       root.networkStatsBusy = false
+      root.serviceCollectorBusy = false
       root.networkPrevRx = NaN
       root.networkPrevTx = NaN
       root.networkPrevTime = NaN
@@ -894,6 +1031,7 @@ Panel {
       root.storageError = ""
       root.hardwareError = ""
       root.networkError = ""
+      root.systemdError = ""
     }
   }
 
@@ -1673,6 +1811,84 @@ Panel {
   }
 
   Process {
+    id: serviceProc
+    command: [
+      "bash",
+      "-lc",
+      "python3 - <<'PY'\n" +
+      "import json, os, subprocess\n" +
+      "\n" +
+      "LIST = ['systemctl', '--no-pager', '--no-legend', '--plain', '--full', 'list-units', '--type=service', '--all']\n" +
+      "IMPORTANT = ('NetworkManager', 'networkd', 'bluetooth', 'pipewire', 'wireplumber', 'sshd', 'ssh.service', 'sunshine', 'tailscale', 'docker', 'podman', 'libvirt', 'cups', 'power-profiles-daemon')\n" +
+      "\n" +
+      "def call(args):\n" +
+      "    try:\n" +
+      "        return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, check=False)\n" +
+      "    except OSError:\n" +
+      "        return None\n" +
+      "\n" +
+      "def manager_state(user):\n" +
+      "    args = ['systemctl'] + (['--user'] if user else []) + ['is-system-running']\n" +
+      "    result = call(args)\n" +
+      "    if result is None:\n" +
+      "        return 'unknown'\n" +
+      "    state = result.stdout.strip().splitlines()\n" +
+      "    return state[0].strip() if state and state[0].strip() else 'unknown'\n" +
+      "\n" +
+      "def parse_units(user):\n" +
+      "    result = call((['systemctl', '--user'] if user else ['systemctl']) + LIST[1:])\n" +
+      "    if result is None or result.returncode != 0:\n" +
+      "        return None\n" +
+      "    services = []\n" +
+      "    for line in result.stdout.splitlines():\n" +
+      "        parts = line.strip().split(None, 4)\n" +
+      "        if len(parts) < 4 or not parts[0].endswith('.service'):\n" +
+      "            continue\n" +
+      "        unit, load, active, sub = parts[:4]\n" +
+      "        description = parts[4].strip() if len(parts) == 5 else ''\n" +
+      "        services.append({'unit': unit, 'description': description, 'scope': 'user' if user else 'system', 'loadState': load, 'activeState': active, 'subState': sub})\n" +
+      "    return services\n" +
+      "\n" +
+      "def manager(services, state):\n" +
+      "    units = services or []\n" +
+      "    return {'state': state, 'loaded': sum(1 for x in units if x['loadState'] == 'loaded'), 'active': sum(1 for x in units if x['activeState'] == 'active'), 'running': sum(1 for x in units if x['activeState'] == 'active' and x['subState'] == 'running'), 'failed': sum(1 for x in units if x['activeState'] == 'failed')}\n" +
+      "\n" +
+      "system = parse_units(False)\n" +
+      "user = parse_units(True)\n" +
+      "all_services = (system or []) + (user or [])\n" +
+      "important = [x for x in all_services if x['loadState'] == 'loaded' and any(token.lower() in x['unit'].lower() for token in IMPORTANT)]\n" +
+      "failed = [x for x in all_services if x['activeState'] == 'failed']\n" +
+      "audio = {}\n" +
+      "display = None\n" +
+      "for item in user or []:\n" +
+      "    unit = item['unit']\n" +
+      "    if unit == 'pipewire.service': audio['pipewire'] = item\n" +
+      "    elif unit == 'pipewire-pulse.service': audio['pipewirePulse'] = item\n" +
+      "    elif unit == 'wireplumber.service': audio['wireplumber'] = item\n" +
+      "    elif unit.startswith('wayland-wm@') and unit.endswith('.service'): display = item\n" +
+      "payload = {'systemManager': manager(system, manager_state(False)), 'userManager': manager(user, manager_state(True)), 'services': all_services, 'importantServices': important, 'failedServices': failed[:5], 'audio': audio, 'display': display}\n" +
+      "print(json.dumps(payload, separators=(',', ':')))\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateSystemdState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (root.opened && String(text || "").trim() !== "")
+          console.warn("k3v.hardware: systemd collector: " + String(text).trim())
+      }
+    }
+    onExited: function(exitCode) {
+      root.serviceCollectorBusy = false
+      if (root.opened && exitCode !== 0 && root.systemdError === "")
+        root.systemdError = "Service collector exited with code " + exitCode
+    }
+  }
+
+  Process {
     id: storageProc
     command: [
       "bash",
@@ -1798,6 +2014,15 @@ Panel {
         storageProc.running = true
       }
     }
+  }
+
+  Timer {
+    id: serviceTimer
+    interval: 5000
+    running: root.opened
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshSystemd()
   }
 
   function setCenterHoverRevealSuppressed(value) {

@@ -1,5 +1,14 @@
 # Changelog
 
+## Milestone 8 — systemd service telemetry
+- Added read-only system and user systemd manager health, service counts, running states, and failed-service visibility
+- Added defensive plain-output discovery of important services while preserving system/user scope and excluding environment, credentials, and ExecStart data
+- Added live PipeWire/WirePlumber audio summary and actual Hyprland user-service display status where available
+- Added compact Systemd and detailed Important Services and Failed Services sections while preserving the live Network, Audio, and Display rows
+- Kept service collection lifecycle-bound to the open panel with immediate refresh and approximately 5-second polling, guarded against overlapping collectors
+- Added no service controls or other mutating systemd operations; all telemetry remains read-only
+- Updated the plugin version to `0.8.0`
+
 ## Milestone 7 — Network telemetry
 - Added read-only default-route detection, interface typing, and current connection state using `ip`, `/sys/class/net`, and local Linux interfaces without mutating network settings
 - Reported active IPv4, default gateway, DNS resolvers, and current link speed for the primary interface while intentionally excluding MAC addresses, BSSIDs, saved secrets, and private network credentials
