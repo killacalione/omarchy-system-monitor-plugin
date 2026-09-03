@@ -48,20 +48,23 @@ Required only for corresponding optional telemetry:
 
 ## Installation
 
-The supported local plugin directory is:
-
-```text
-~/.config/omarchy/plugins/k3v.hardware
-```
-
-To install from a local checkout, place or clone the directory there, then
-enable it in the bar:
+Install directly from the public repository:
 
 ```bash
-omarchy plugin validate ~/.config/omarchy/plugins/k3v.hardware
+omarchy plugin add https://github.com/killacalione/omarchy-system-monitor-plugin.git --enable
+```
+
+The plugin is installed as `k3v.hardware`. To place it in the bar's right
+section:
+
+```bash
 omarchy plugin enable k3v.hardware --section right
 omarchy restart shell
 ```
+
+For a local checkout, place or clone the directory at
+`~/.config/omarchy/plugins/k3v.hardware`, then validate and enable it with the
+same commands.
 
 The current shell configuration can also contain the widget ID directly in
 the bar's widget list. The plugin ID is `k3v.hardware` and must not be
@@ -69,18 +72,16 @@ renamed.
 
 ## Update
 
-This checkout is local-only and has no assumed remote URL. After configuring a
-remote yourself, update safely with:
+Update the installed git-managed plugin with:
 
 ```bash
-cd ~/.config/omarchy/plugins/k3v.hardware
-git status --short --branch
-git pull --ff-only
-omarchy plugin validate .
+omarchy plugin update k3v.hardware
 omarchy restart shell
 ```
 
-Do not overwrite local changes without reviewing them first.
+Do not overwrite local changes without reviewing them first. For a local
+checkout managed outside Omarchy, use `git pull --ff-only` after reviewing
+`git status --short --branch`, then run `omarchy plugin validate .`.
 
 ## Uninstall / Disable
 
