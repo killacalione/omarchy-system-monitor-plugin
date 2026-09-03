@@ -118,6 +118,64 @@ Panel {
   property var systemdFailedRows: []
   property string systemdError: ""
   property bool serviceCollectorBusy: false
+  property int historyMaxSamples: 61
+  property var cpuHistory: []
+  property var gpuHistory: []
+  property var memoryHistory: []
+  property var networkRxHistory: []
+  property var networkTxHistory: []
+  property var cpuTempHistory: []
+  property var gpuTempHistory: []
+
+  function numericMetric(value, suffix) {
+    var text = String(value || "").trim()
+    if (suffix && text.endsWith(suffix)) text = text.slice(0, -suffix.length).trim()
+    var number = Number(text.split(/\s+/)[0])
+    if (suffix === "B/s") {
+      var rateUnit = text.split(/\s+/)[1] || "B/s"
+      var factors = { "B/s": 1, "KiB/s": 1024, "MiB/s": 1024 * 1024, "GiB/s": 1024 * 1024 * 1024 }
+      number *= factors[rateUnit] || 1
+    }
+    return isFinite(number) ? number : NaN
+  }
+
+  function appendHistory(history, value) {
+    var result = Array.isArray(history) ? history.slice() : []
+    if (isFinite(value)) {
+      result.push(Number(value))
+      while (result.length > root.historyMaxSamples) result.shift()
+    }
+    return result
+  }
+
+  function resetHistory() {
+    root.cpuHistory = []
+    root.gpuHistory = []
+    root.memoryHistory = []
+    root.networkRxHistory = []
+    root.networkTxHistory = []
+    root.cpuTempHistory = []
+    root.gpuTempHistory = []
+  }
+
+  function sampleHistory() {
+    if (!root.opened) return
+    var cpu = root.numericMetric(root.cpuUsage, "%")
+    var gpu = root.numericMetric(root.gpuUtilization, "%")
+    var cpuTemp = root.numericMetric(root.cpuTemperature, "°C")
+    var gpuTemp = root.numericMetric(root.gpuTemperature, "°C")
+    var rx = root.numericMetric(root.networkReceiving, "B/s")
+    var tx = root.numericMetric(root.networkSending, "B/s")
+    var usedMatch = String(root.memoryUsed).match(/^([0-9.]+)\s*\/\s*([0-9.]+)\s+GiB$/)
+    var memory = usedMatch ? 100 * Number(usedMatch[1]) / Number(usedMatch[2]) : NaN
+    root.cpuHistory = root.appendHistory(root.cpuHistory, cpu)
+    root.gpuHistory = root.appendHistory(root.gpuHistory, gpu)
+    root.memoryHistory = root.appendHistory(root.memoryHistory, memory)
+    root.networkRxHistory = root.appendHistory(root.networkRxHistory, rx)
+    root.networkTxHistory = root.appendHistory(root.networkTxHistory, tx)
+    root.cpuTempHistory = root.appendHistory(root.cpuTempHistory, cpuTemp)
+    root.gpuTempHistory = root.appendHistory(root.gpuTempHistory, gpuTemp)
+  }
 
   property real cpuTotalLast: NaN
   property real cpuIdleLast: NaN
@@ -1003,6 +1061,7 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
+      root.resetHistory()
       root.refresh()
       networkMetaTimer.start()
       networkStatsTimer.start()
@@ -1032,6 +1091,7 @@ Panel {
       root.hardwareError = ""
       root.networkError = ""
       root.systemdError = ""
+      root.resetHistory()
     }
   }
 
@@ -1504,6 +1564,14 @@ Panel {
         root.setHardwareUnavailable("Hardware telemetry exited with code " + exitCode)
       }
     }
+  }
+
+  Timer {
+    id: historyTimer
+    interval: 1000
+    running: root.opened
+    repeat: true
+    onTriggered: root.sampleHistory()
   }
 
   Timer {
@@ -2129,6 +2197,142 @@ Panel {
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+          }
+
+          BorderSurface {
+            width: panelFlick.width
+            color: Util.alpha(Color.popups.background, 0.94)
+            borderSpec: Border.flat(Util.alpha(root.foreground, 0.12), 1)
+            radius: Style.cornerRadius
+            implicitHeight: performanceColumn.implicitHeight + Style.space(16)
+
+            Column {
+              id: performanceColumn
+              width: parent.width
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.space(10)
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "PERFORMANCE"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: cpuGraph.implicitHeight + Style.space(4)
+                Text { text: "CPU"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
+                Text { anchors.right: parent.right; text: root.cpuUsage; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+                HistoryGraph {
+                  id: cpuGraph
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: Style.space(20)
+                  height: 72
+                  values: root.cpuHistory
+                  primaryLabel: "CPU"
+                  foreground: root.foreground
+                  primaryColor: Color.accent
+                }
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: gpuGraph.implicitHeight + Style.space(4)
+                Text { text: "GPU"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
+                Text { anchors.right: parent.right; text: root.gpuUtilization; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+                HistoryGraph {
+                  id: gpuGraph
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: Style.space(20)
+                  height: 72
+                  values: root.gpuHistory
+                  foreground: root.foreground
+                  primaryColor: Color.accent
+                }
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: memoryGraph.implicitHeight + Style.space(4)
+                Text { text: "Memory"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
+                Text {
+                  anchors.right: parent.right
+                  text: root.memoryHistory.length > 0 ? root.memoryHistory[root.memoryHistory.length - 1].toFixed(0) + "%" : "—"
+                  color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+                }
+                HistoryGraph {
+                  id: memoryGraph
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: Style.space(20)
+                  height: 72
+                  values: root.memoryHistory
+                  foreground: root.foreground
+                  primaryColor: Color.accent
+                }
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: networkGraph.implicitHeight + Style.space(4)
+                Text { text: "Network"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
+                Text {
+                  anchors.right: parent.right
+                  text: "↓ " + root.networkReceiving + " · ↑ " + root.networkSending
+                  color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+                }
+                HistoryGraph {
+                  id: networkGraph
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: Style.space(20)
+                  height: 72
+                  values: root.networkRxHistory
+                  secondaryValues: root.networkTxHistory
+                  autoScale: true
+                  unit: "B/s"
+                  foreground: root.foreground
+                  primaryColor: Color.accent
+                  secondaryColor: Color.muted
+                }
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: temperatureGraph.implicitHeight + Style.space(4)
+                Text { text: "Temperatures"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
+                Text {
+                  anchors.right: parent.right
+                  text: "CPU " + root.cpuTemperature + " · GPU " + root.gpuTemperature
+                  color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
+                }
+                HistoryGraph {
+                  id: temperatureGraph
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: Style.space(20)
+                  height: 72
+                  values: root.cpuTempHistory
+                  secondaryValues: root.gpuTempHistory
+                  minimum: 20
+                  maximum: 100
+                  foreground: root.foreground
+                  primaryColor: Color.accent
+                  secondaryColor: Color.muted
+                }
               }
             }
           }

@@ -1,5 +1,12 @@
 # Changelog
 
+## Milestone 9 — Performance graphs and short-term history
+- Added a reusable `HistoryGraph.qml` component using theme-driven QtQuick Shapes sparklines for CPU, GPU, memory, network RX/TX, and CPU/GPU temperature history
+- Added one in-memory 1-second history sampler with bounded 61-sample buffers, fixed 0–100% utilization scaling, 20–100°C temperature scaling, and recent-window auto-scaling for network rates
+- Reset history on panel open and clear it on close; invalid or unavailable telemetry is skipped rather than recorded as zero
+- Kept graph data sourced exclusively from existing CPU, GPU, memory, and network properties without duplicate collectors, persistent storage, daemons, or background services
+- Updated the plugin version to `0.9.0`
+
 ## Milestone 8 — systemd service telemetry
 - Added read-only system and user systemd manager health, service counts, running states, and failed-service visibility
 - Added defensive plain-output discovery of important services while preserving system/user scope and excluding environment, credentials, and ExecStart data
