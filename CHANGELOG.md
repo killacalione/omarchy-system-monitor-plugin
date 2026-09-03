@@ -1,5 +1,14 @@
 # Changelog
 
+## Milestone 7 — Network telemetry
+- Added read-only default-route detection, interface typing, and current connection state using `ip`, `/sys/class/net`, and local Linux interfaces without mutating network settings
+- Reported active IPv4, default gateway, DNS resolvers, and current link speed for the primary interface while intentionally excluding MAC addresses, BSSIDs, saved secrets, and private network credentials
+- Added live receive/send rate calculations from `rx_bytes` and `tx_bytes` deltas, plus cumulative received/sent totals in binary units for the active interface
+- Added a dedicated network metadata collector and a separate network stats collector to avoid repeated expensive metadata discovery and to keep rate polling independent of connection discovery
+- Added a `Network` section and an `Adapters` list that show the physical/default interface and the non-loopback adapter inventory while excluding loopback, Docker, bridge, and container interfaces from the user-facing network list
+- Kept the network polling lifecycle tied to the panel open/close state: metadata refreshes at ~5s while open, stats sampling at ~1s while open, and no continued polling after close
+- Updated the plugin version to `0.7.0`
+
 ## Milestone 6 — Hardware and PCI telemetry
 - Added a dedicated read-only hardware collector that gathers motherboard DMI metadata, BIOS/firmware details, kernel and architecture info, and a single-shot hardware inventory pass when the panel opens
 - Reported motherboard vendor/model and BIOS version from unprivileged `/sys/class/dmi/id` data while intentionally excluding serial numbers, UUIDs, and other unique identifiers from the UI and JSON payload

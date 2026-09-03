@@ -66,6 +66,40 @@ Panel {
   property string hardwareError: ""
   property bool hardwareCollectorBusy: false
 
+  property string networkConnection: "—"
+  property string networkInterface: "—"
+  property string networkState: "—"
+  property string networkIPv4: "—"
+  property string networkGateway: "—"
+  property string networkLink: "—"
+  property string networkReceiving: "—"
+  property string networkSending: "—"
+  property string networkReceivedTotal: "—"
+  property string networkSentTotal: "—"
+  property string networkDNS: "—"
+  property string networkServiceSummary: "Disconnected"
+  property var networkRows: [
+    { label: "Connection", value: root.networkConnection },
+    { label: "Interface", value: root.networkInterface },
+    { label: "State", value: root.networkState },
+    { label: "IPv4", value: root.networkIPv4 },
+    { label: "Gateway", value: root.networkGateway },
+    { label: "Link", value: root.networkLink },
+    { label: "Receiving", value: root.networkReceiving },
+    { label: "Sending", value: root.networkSending },
+    { label: "Received", value: root.networkReceivedTotal },
+    { label: "Sent", value: root.networkSentTotal },
+    { label: "DNS", value: root.networkDNS }
+  ]
+  property var networkAdapters: []
+  property var networkAdapterRows: []
+  property string networkError: ""
+  property bool networkMetaBusy: false
+  property bool networkStatsBusy: false
+  property real networkPrevRx: NaN
+  property real networkPrevTx: NaN
+  property real networkPrevTime: NaN
+
   property real cpuTotalLast: NaN
   property real cpuIdleLast: NaN
 
@@ -114,6 +148,19 @@ Panel {
 
   function formatStorageSize(bytes) {
     return root.formatBinaryBytes(bytes)
+  }
+
+  function formatRate(bytesPerSecond) {
+    var value = Number(bytesPerSecond)
+    if (isNaN(value) || value < 0) return "—"
+    var units = ["B/s", "KiB/s", "MiB/s", "GiB/s"]
+    var unitIndex = 0
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024
+      unitIndex += 1
+    }
+    if (unitIndex === 0) return Math.max(0, value).toFixed(0) + " " + units[unitIndex]
+    return Math.max(0, value).toFixed(1) + " " + units[unitIndex]
   }
 
   function setGpuUnavailable(reason) {
@@ -448,6 +495,179 @@ Panel {
     root.hardwareError = ""
   }
 
+  function updateNetworkState(rawText) {
+    if (!root.opened) {
+      root.networkConnection = "—"
+      root.networkInterface = "—"
+      root.networkState = "—"
+      root.networkIPv4 = "—"
+      root.networkGateway = "—"
+      root.networkLink = "—"
+      root.networkReceiving = "—"
+      root.networkSending = "—"
+      root.networkReceivedTotal = "—"
+      root.networkSentTotal = "—"
+      root.networkDNS = "—"
+      root.networkServiceSummary = "Disconnected"
+      root.networkRows = [
+        { label: "Connection", value: root.networkConnection },
+        { label: "Interface", value: root.networkInterface },
+        { label: "State", value: root.networkState },
+        { label: "IPv4", value: root.networkIPv4 },
+        { label: "Gateway", value: root.networkGateway },
+        { label: "Link", value: root.networkLink },
+        { label: "Receiving", value: root.networkReceiving },
+        { label: "Sending", value: root.networkSending },
+        { label: "Received", value: root.networkReceivedTotal },
+        { label: "Sent", value: root.networkSentTotal },
+        { label: "DNS", value: root.networkDNS }
+      ]
+      root.networkAdapters = []
+      root.networkAdapterRows = []
+      root.networkError = ""
+      root.networkMetaBusy = false
+      return
+    }
+
+    var text = String(rawText || "").trim()
+    if (!text) {
+      root.networkError = "Network metadata returned no output"
+      console.warn("k3v.hardware: " + root.networkError)
+      return
+    }
+
+    var data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      root.networkError = "Network metadata JSON was malformed"
+      console.warn("k3v.hardware: " + root.networkError)
+      return
+    }
+
+    if (!data || typeof data !== "object") {
+      root.networkError = "Network metadata payload was invalid"
+      console.warn("k3v.hardware: " + root.networkError)
+      return
+    }
+
+    if (typeof data.error === "string" && data.error !== "") {
+      root.networkError = "Network metadata failed: " + data.error
+      console.warn("k3v.hardware: " + root.networkError)
+      return
+    }
+
+    root.networkError = ""
+    root.networkConnection = root.safeValue(data.connection)
+    root.networkInterface = root.safeValue(data.interface)
+    root.networkState = root.safeValue(data.state)
+    root.networkIPv4 = root.safeValue(data.ipv4)
+    root.networkGateway = root.safeValue(data.gateway)
+    root.networkLink = root.safeValue(data.link)
+    root.networkDNS = root.safeValue(data.dns)
+    root.networkServiceSummary = root.safeValue(data.summary)
+    if (root.networkServiceSummary === "—") root.networkServiceSummary = root.networkState === "Connected" ? (root.networkConnection !== "—" ? root.networkConnection : "Connected") : "Disconnected"
+
+    var adapters = Array.isArray(data.adapters) ? data.adapters : []
+    root.networkAdapters = adapters
+    var adapterRows = []
+    for (var i = 0; i < adapters.length; ++i) {
+      var item = adapters[i]
+      if (!item || typeof item !== "object") continue
+      var name = root.safeValue(item.name)
+      var typeText = root.safeValue(item.type)
+      var stateText = root.safeValue(item.state)
+      var label = name !== "—" ? name : "Unknown"
+      if (typeText !== "—") label += " · " + typeText
+      if (stateText !== "—") label += " · " + stateText
+      adapterRows.push(label)
+    }
+    root.networkAdapterRows = adapterRows.length > 0 ? adapterRows : ["—"]
+
+    root.networkRows = [
+      { label: "Connection", value: root.networkConnection },
+      { label: "Interface", value: root.networkInterface },
+      { label: "State", value: root.networkState },
+      { label: "IPv4", value: root.networkIPv4 },
+      { label: "Gateway", value: root.networkGateway },
+      { label: "Link", value: root.networkLink },
+      { label: "Receiving", value: root.networkReceiving },
+      { label: "Sending", value: root.networkSending },
+      { label: "Received", value: root.networkReceivedTotal },
+      { label: "Sent", value: root.networkSentTotal },
+      { label: "DNS", value: root.networkDNS }
+    ]
+  }
+
+  function updateNetworkStats(rawText) {
+    var text = String(rawText || "").trim()
+    if (!text) {
+      if (root.opened) {
+        root.networkReceiving = "—"
+        root.networkSending = "—"
+      }
+      return
+    }
+
+    var data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      if (root.opened) {
+        root.networkReceiving = "—"
+        root.networkSending = "—"
+      }
+      return
+    }
+
+    if (!data || typeof data !== "object") return
+    var rxBytes = Number(data.rxBytes)
+    var txBytes = Number(data.txBytes)
+    if (isNaN(rxBytes) || isNaN(txBytes)) return
+
+    var currentTime = Date.now()
+    var previousTs = Number(root.networkPrevTime)
+    var previousRx = Number(root.networkPrevRx)
+    var previousTx = Number(root.networkPrevTx)
+    var deltaSeconds = 0
+    if (!isNaN(previousTs) && previousTs > 0 && currentTime > previousTs) {
+      deltaSeconds = Math.max(0.25, (currentTime - previousTs) / 1000.0)
+    }
+
+    if (!isNaN(previousRx) && !isNaN(previousTx) && !isNaN(previousTs) && previousTs > 0 && currentTime > previousTs) {
+      var rxDelta = Math.max(0, rxBytes - previousRx)
+      var txDelta = Math.max(0, txBytes - previousTx)
+      if (rxBytes < previousRx || txBytes < previousTx) {
+        rxDelta = 0
+        txDelta = 0
+      }
+      root.networkReceiving = root.formatRate(rxDelta / deltaSeconds)
+      root.networkSending = root.formatRate(txDelta / deltaSeconds)
+    } else {
+      root.networkReceiving = "—"
+      root.networkSending = "—"
+    }
+
+    root.networkPrevRx = rxBytes
+    root.networkPrevTx = txBytes
+    root.networkPrevTime = currentTime
+    root.networkReceivedTotal = root.formatBinaryBytes(rxBytes)
+    root.networkSentTotal = root.formatBinaryBytes(txBytes)
+    root.networkRows = [
+      { label: "Connection", value: root.networkConnection },
+      { label: "Interface", value: root.networkInterface },
+      { label: "State", value: root.networkState },
+      { label: "IPv4", value: root.networkIPv4 },
+      { label: "Gateway", value: root.networkGateway },
+      { label: "Link", value: root.networkLink },
+      { label: "Receiving", value: root.networkReceiving },
+      { label: "Sending", value: root.networkSending },
+      { label: "Received", value: root.networkReceivedTotal },
+      { label: "Sent", value: root.networkSentTotal },
+      { label: "DNS", value: root.networkDNS }
+    ]
+  }
+
   function updateStorageState(rawText) {
     if (!root.opened) {
       root.storageAvailable = false
@@ -550,6 +770,30 @@ Panel {
       root.hardwareCollectorBusy = true
       hardwareProc.running = true
     }
+    if (!root.networkMetaBusy && !networkMetaProc.running) {
+      root.networkMetaBusy = true
+      networkMetaProc.running = true
+    }
+    if (!root.networkStatsBusy && !networkStatsProc.running) {
+      root.networkStatsBusy = true
+      networkStatsProc.running = true
+    }
+  }
+
+  function refreshNetworkMetadata() {
+    if (!root.opened) return
+    if (!root.networkMetaBusy && !networkMetaProc.running) {
+      root.networkMetaBusy = true
+      networkMetaProc.running = true
+    }
+  }
+
+  function refreshNetworkStats() {
+    if (!root.opened) return
+    if (!root.networkStatsBusy && !networkStatsProc.running) {
+      root.networkStatsBusy = true
+      networkStatsProc.running = true
+    }
   }
 
   readonly property var sections: [
@@ -610,9 +854,13 @@ Panel {
       ]
     },
     {
+      title: "Network",
+      rows: root.networkRows
+    },
+    {
       title: "Services",
       rows: [
-        { label: "Network", value: "—" },
+        { label: "Network", value: root.networkServiceSummary },
         { label: "Audio", value: "—" },
         { label: "Display", value: "—" }
       ]
@@ -620,19 +868,32 @@ Panel {
   ]
 
   onOpenedChanged: {
-    if (opened) root.refresh()
-    else {
+    if (opened) {
+      root.refresh()
+      networkMetaTimer.start()
+      networkStatsTimer.start()
+    } else {
       gpuProc.running = false
       cpuProc.running = false
       processProc.running = false
       storageProc.running = false
       hardwareProc.running = false
+      networkMetaProc.running = false
+      networkStatsProc.running = false
+      networkMetaTimer.stop()
+      networkStatsTimer.stop()
       root.processCollectorBusy = false
       root.storageCollectorBusy = false
       root.hardwareCollectorBusy = false
+      root.networkMetaBusy = false
+      root.networkStatsBusy = false
+      root.networkPrevRx = NaN
+      root.networkPrevTx = NaN
+      root.networkPrevTime = NaN
       root.processError = ""
       root.storageError = ""
       root.hardwareError = ""
+      root.networkError = ""
     }
   }
 
@@ -1107,6 +1368,310 @@ Panel {
     }
   }
 
+  Timer {
+    id: networkMetaTimer
+    interval: 5000
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshNetworkMetadata()
+  }
+
+  Timer {
+    id: networkStatsTimer
+    interval: 1000
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshNetworkStats()
+  }
+
+  Process {
+    id: networkMetaProc
+    command: [
+      "bash",
+      "-lc",
+      "python3 - <<'PY'\n" +
+      "import json, os, re, subprocess\n" +
+      "\n" +
+      "def read_text(path):\n" +
+      "    try:\n" +
+      "        with open(path, 'r', encoding='utf-8', errors='replace') as fh:\n" +
+      "            return fh.read().strip()\n" +
+      "    except (FileNotFoundError, PermissionError, OSError):\n" +
+      "        return ''\n" +
+      "\n" +
+      "def jcall(args):\n" +
+      "    try:\n" +
+      "        return json.loads(subprocess.check_output(args, stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "    except Exception:\n" +
+      "        return []\n" +
+      "\n" +
+      "def dedupe(items):\n" +
+      "    seen = set()\n" +
+      "    out = []\n" +
+      "    for item in items:\n" +
+      "        value = str(item).strip()\n" +
+      "        if value and value not in seen:\n" +
+      "            seen.add(value)\n" +
+      "            out.append(value)\n" +
+      "    return out\n" +
+      "\n" +
+      "links = jcall(['ip', '-j', 'link', 'show'])\n" +
+      "addresses = jcall(['ip', '-j', 'addr', 'show'])\n" +
+      "routes = jcall(['ip', '-j', 'route', 'show', 'default'])\n" +
+      "default_iface = ''\n" +
+      "default_gateway = ''\n" +
+      "for route in routes:\n" +
+      "    if route.get('dst') == 'default':\n" +
+      "        dev = str(route.get('dev') or '').strip()\n" +
+      "        if dev:\n" +
+      "            default_iface = dev\n" +
+      "            default_gateway = str(route.get('gateway') or '').strip()\n" +
+      "            break\n" +
+      "\n" +
+      "if not default_iface:\n" +
+      "    for item in links:\n" +
+      "        name = str(item.get('ifname') or '').strip()\n" +
+      "        if not name or name == 'lo':\n" +
+      "            continue\n" +
+      "        operstate = str(item.get('operstate') or '').lower()\n" +
+      "        if operstate in {'up', 'unknown'} and not name.startswith(('docker', 'veth', 'br-', 'virbr', 'cni', 'flannel')):\n" +
+      "            default_iface = name\n" +
+      "            break\n" +
+      "\n" +
+      "iface = default_iface\n" +
+      "iface_type = 'Other'\n" +
+      "state = 'Disconnected'\n" +
+      "ipv4 = ''\n" +
+      "gateway = default_gateway\n" +
+      "link_speed = ''\n" +
+      "ssid = ''\n" +
+      "dns_servers = []\n" +
+      "\n" +
+      "for info in addresses:\n" +
+      "    if str(info.get('ifname') or '').strip() != iface:\n" +
+      "        continue\n" +
+      "    for addr in info.get('addr_info') or []:\n" +
+      "        if str(addr.get('family') or '').lower() == 'inet':\n" +
+      "            ipv4 = str(addr.get('local') or '').strip()\n" +
+      "            break\n" +
+      "\n" +
+      "for item in links:\n" +
+      "    if str(item.get('ifname') or '').strip() != iface:\n" +
+      "        continue\n" +
+      "    oper = str(item.get('operstate') or '').strip()\n" +
+      "    if oper.lower() in {'up', 'unknown'}:\n" +
+      "        state = 'Connected'\n" +
+      "    if os.path.exists(f'/sys/class/net/{iface}/wireless'):\n" +
+      "        iface_type = 'Wi-Fi'\n" +
+      "    elif iface.startswith(('tun', 'tap', 'wg', 'tailscale')):\n" +
+      "        iface_type = 'Tunnel'\n" +
+      "    elif iface.startswith(('veth', 'docker', 'cni', 'virbr', 'br-')):\n" +
+      "        iface_type = 'Virtual'\n" +
+      "    elif str(item.get('link_type') or '').lower() in {'ether'}:\n" +
+      "        iface_type = 'Ethernet'\n" +
+      "    break\n" +
+      "\n" +
+      "if iface and os.path.exists(f'/sys/class/net/{iface}/speed'):\n" +
+      "    try:\n" +
+      "        val = int(read_text(f'/sys/class/net/{iface}/speed'))\n" +
+      "        if val >= 0:\n" +
+      "            link_speed = f'{(val / 1000.0):.1f} Gbps' if val >= 1000 else f'{val} Mbps'\n" +
+      "    except Exception:\n" +
+      "        pass\n" +
+      "\n" +
+      "if iface_type == 'Wi-Fi':\n" +
+      "    try:\n" +
+      "        iw = subprocess.check_output(['iw', 'dev', iface, 'link'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'})\n" +
+      "        match = re.search(r'SSID:(.*)', iw, re.MULTILINE)\n" +
+      "        if match:\n" +
+      "            ssid = match.group(1).strip()\n" +
+      "        bitrate_match = re.search(r'tx bitrate: ([0-9]+)\.?([0-9]*)', iw, re.IGNORECASE)\n" +
+      "        if bitrate_match and not link_speed:\n" +
+      "            bitrate = float(bitrate_match.group(1)) + (float(bitrate_match.group(2) or 0) / 10.0)\n" +
+      "            if bitrate >= 1000:\n" +
+      "                link_speed = f'{bitrate / 1000.0:.1f} Gbps'\n" +
+      "            else:\n" +
+      "                link_speed = f'{bitrate:.0f} Mbps'\n" +
+      "    except Exception:\n" +
+      "        pass\n" +
+      "\n" +
+      "dns_servers = []\n" +
+      "try:\n" +
+      "    resolv = subprocess.check_output(['resolvectl', 'status'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'})\n" +
+      "    current_section = None\n" +
+      "    for line in resolv.splitlines():\n" +
+      "        section_match = re.match(r'^\\s*Link\\s+\\d+\\s+\\(([^)]+)\\)\\s*$', line)\n" +
+      "        if section_match:\n" +
+      "            current_section = section_match.group(1).strip()\n" +
+      "            continue\n" +
+      "        if current_section != iface:\n" +
+      "            continue\n" +
+      "        if 'Current DNS Server:' in line:\n" +
+      "            current = line.split('Current DNS Server:', 1)[1].strip()\n" +
+      "            if current and current not in dns_servers:\n" +
+      "                dns_servers.append(current)\n" +
+      "        elif 'DNS Servers:' in line:\n" +
+      "            suffix = line.split('DNS Servers:', 1)[1].strip()\n" +
+      "            for token in re.split(r'\\s+', suffix):\n" +
+      "                token = token.strip()\n" +
+      "                if token and token not in dns_servers:\n" +
+      "                    dns_servers.append(token)\n" +
+      "    if not dns_servers:\n" +
+      "        for line in resolv.splitlines():\n" +
+      "            if 'Current DNS Server:' in line:\n" +
+      "                value = line.split('Current DNS Server:', 1)[1].strip()\n" +
+      "                if value:\n" +
+      "                    dns_servers.append(value)\n" +
+      "                    break\n" +
+      "except Exception:\n" +
+      "    pass\n" +
+      "if not dns_servers:\n" +
+      "    try:\n" +
+      "        for line in open('/etc/resolv.conf', 'r', encoding='utf-8', errors='replace').read().splitlines():\n" +
+      "            if line.startswith('nameserver'):\n" +
+      "                value = line.split()[1].strip()\n" +
+      "                if value:\n" +
+      "                    dns_servers.append(value)\n" +
+      "    except Exception:\n" +
+      "        pass\n" +
+      "dns_servers = dedupe(dns_servers)[:3]\n" +
+      "connection = ssid or (iface_type if iface_type != 'Other' else 'Disconnected')\n" +
+      "if iface_type == 'Ethernet':\n" +
+      "    connection = 'Ethernet'\n" +
+      "elif iface_type == 'Wi-Fi' and ssid:\n" +
+      "    connection = ssid\n" +
+      "elif iface_type == 'Wi-Fi':\n" +
+      "    connection = 'Wi‑Fi'\n" +
+      "if iface_type == 'Other' and iface.startswith('tun'):\n" +
+      "    connection = 'Tunnel'\n" +
+      "summary = 'Disconnected'\n" +
+      "if state == 'Connected':\n" +
+      "    summary = f'{connection} · {link_speed}' if link_speed else connection\n" +
+      "    if iface_type == 'Wi-Fi':\n" +
+      "        summary = f'Wi‑Fi · Connected'\n" +
+      "else:\n" +
+      "    summary = 'Disconnected'\n" +
+      "\n" +
+      "adapters = []\n" +
+      "for item in links:\n" +
+      "    name = str(item.get('ifname') or '').strip()\n" +
+      "    if not name or name == 'lo' or name.startswith(('docker', 'veth', 'br-', 'virbr', 'cni', 'flannel')):\n" +
+      "        continue\n" +
+      "    oper = str(item.get('operstate') or 'DOWN').strip().lower()\n" +
+      "    link_type = str(item.get('link_type') or '').lower()\n" +
+      "    kind = 'Other'\n" +
+      "    if os.path.exists(f'/sys/class/net/{name}/wireless'):\n" +
+      "        kind = 'Wi-Fi'\n" +
+      "    elif name.startswith(('tun', 'tap', 'wg', 'tailscale')):\n" +
+      "        kind = 'Tunnel'\n" +
+      "    elif link_type == 'ether':\n" +
+      "        kind = 'Ethernet'\n" +
+      "    elif name.startswith(('veth', 'docker', 'cni', 'virbr', 'br-')):\n" +
+      "        kind = 'Virtual'\n" +
+      "    adapters.append({'name': name, 'type': kind, 'state': 'Connected' if oper in {'up', 'unknown'} else 'Disconnected', 'primary': name == iface})\n" +
+      "\n" +
+      "payload = {'interface': iface or '—', 'connection': connection or '—', 'state': state, 'ipv4': ipv4 or '—', 'gateway': gateway or '—', 'link': link_speed or '—', 'dns': ', '.join(dns_servers) if dns_servers else '—', 'summary': summary, 'adapters': adapters}\n" +
+      "print(json.dumps(payload, separators=(',', ':')) )\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateNetworkState(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (!root.opened) return
+        var msg = String(text || "").trim()
+        if (msg !== "") {
+          console.warn("k3v.hardware: " + msg)
+        }
+      }
+    }
+    onExited: function(exitCode) {
+      root.networkMetaBusy = false
+      if (!root.opened) return
+      if (exitCode !== 0 && root.networkError === "") {
+        root.networkError = "Network metadata exited with code " + exitCode
+        console.warn("k3v.hardware: " + root.networkError)
+      }
+    }
+  }
+
+  Process {
+    id: networkStatsProc
+    command: [
+      "bash",
+      "-lc",
+      "python3 - <<'PY'\n" +
+      "import json, os, subprocess\n" +
+      "\n" +
+      "routes = []\n" +
+      "try:\n" +
+      "    routes = json.loads(subprocess.check_output(['ip', '-j', 'route', 'show', 'default'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "except Exception:\n" +
+      "    routes = []\n" +
+      "iface = ''\n" +
+      "for route in routes:\n" +
+      "    dev = str(route.get('dev') or '').strip()\n" +
+      "    if dev:\n" +
+      "        iface = dev\n" +
+      "        break\n" +
+      "if not iface:\n" +
+      "    try:\n" +
+      "        for entry in os.listdir('/sys/class/net'):\n" +
+      "            if entry == 'lo':\n" +
+      "                continue\n" +
+      "            if entry.startswith(('docker', 'veth', 'br-', 'virbr', 'cni', 'flannel')):\n" +
+      "                continue\n" +
+      "            path = '/sys/class/net/' + entry\n" +
+      "            if os.path.isdir(path):\n" +
+      "                oper = ''\n" +
+      "                try:\n" +
+      "                    oper = open(path + '/operstate', 'r', encoding='utf-8', errors='replace').read().strip().lower()\n" +
+      "                except Exception:\n" +
+      "                    oper = ''\n" +
+      "                if oper in {'up', 'unknown'}:\n" +
+      "                    iface = entry\n" +
+      "                    break\n" +
+      "    except Exception:\n" +
+      "        pass\n" +
+      "rx_bytes = 0\n" +
+      "tx_bytes = 0\n" +
+      "if iface:\n" +
+      "    try:\n" +
+      "        rx_path = '/sys/class/net/' + iface + '/statistics/rx_bytes'\n" +
+      "        tx_path = '/sys/class/net/' + iface + '/statistics/tx_bytes'\n" +
+      "        rx_bytes = int(open(rx_path, 'r', encoding='utf-8', errors='replace').read().strip() or 0)\n" +
+      "        tx_bytes = int(open(tx_path, 'r', encoding='utf-8', errors='replace').read().strip() or 0)\n" +
+      "    except Exception:\n" +
+      "        rx_bytes = 0\n" +
+      "        tx_bytes = 0\n" +
+      "print(json.dumps({'iface': iface, 'rxBytes': rx_bytes, 'txBytes': tx_bytes}, separators=(',', ':')) )\n" +
+      "PY"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateNetworkStats(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (!root.opened) return
+        var msg = String(text || "").trim()
+        if (msg !== "") console.warn("k3v.hardware: " + msg)
+      }
+    }
+    onExited: function(exitCode) {
+      root.networkStatsBusy = false
+      if (!root.opened) return
+      if (exitCode !== 0) {
+        root.networkReceiving = "—"
+        root.networkSending = "—"
+      }
+    }
+  }
+
   Process {
     id: storageProc
     command: [
@@ -1451,6 +2016,43 @@ Panel {
                     font.pixelSize: Style.font.bodySmall
                     elide: Text.ElideRight
                   }
+                }
+              }
+            }
+          }
+
+          BorderSurface {
+            width: panelFlick.width
+            color: Util.alpha(Color.popups.background, 0.94)
+            borderSpec: Border.flat(Util.alpha(root.foreground, 0.12), 1)
+            radius: Style.cornerRadius
+            implicitHeight: adapterSectionColumn.implicitHeight + Style.space(16)
+
+            Column {
+              id: adapterSectionColumn
+              width: parent.width
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.space(10)
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "ADAPTERS"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Repeater {
+                model: root.networkAdapterRows.length > 0 ? root.networkAdapterRows : ["—"]
+                delegate: Text {
+                  width: adapterSectionColumn.width
+                  text: modelData
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  elide: Text.ElideRight
                 }
               }
             }
