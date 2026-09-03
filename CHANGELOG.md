@@ -1,5 +1,9 @@
 # Changelog
 
+## Milestone 9 bugfix — Performance graph layout
+- Corrected graph component and metric-wrapper implicit sizing so each Performance graph reserves its header, spacing, and full 72px drawing area without overlap
+- Constrained long current-value labels to the existing card width while preserving right alignment and the existing 0.9.0 version
+
 ## Milestone 9 — Performance graphs and short-term history
 - Added a reusable `HistoryGraph.qml` component using theme-driven QtQuick Shapes sparklines for CPU, GPU, memory, network RX/TX, and CPU/GPU temperature history
 - Added one in-memory 1-second history sampler with bounded 61-sample buffers, fixed 0–100% utilization scaling, 20–100°C temperature scaling, and recent-window auto-scaling for network rates

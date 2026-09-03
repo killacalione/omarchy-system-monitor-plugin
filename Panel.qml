@@ -2226,9 +2226,9 @@ Panel {
 
               Item {
                 width: parent.width
-                implicitHeight: cpuGraph.implicitHeight + Style.space(4)
+                implicitHeight: cpuGraph.anchors.topMargin + cpuGraph.height + Style.space(4)
                 Text { text: "CPU"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
-                Text { anchors.right: parent.right; text: root.cpuUsage; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+                Text { anchors.right: parent.right; width: parent.width * 0.58; horizontalAlignment: Text.AlignRight; elide: Text.ElideRight; text: root.cpuUsage; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
                 HistoryGraph {
                   id: cpuGraph
                   anchors.left: parent.left
@@ -2245,9 +2245,9 @@ Panel {
 
               Item {
                 width: parent.width
-                implicitHeight: gpuGraph.implicitHeight + Style.space(4)
+                implicitHeight: gpuGraph.anchors.topMargin + gpuGraph.height + Style.space(4)
                 Text { text: "GPU"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
-                Text { anchors.right: parent.right; text: root.gpuUtilization; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+                Text { anchors.right: parent.right; width: parent.width * 0.58; horizontalAlignment: Text.AlignRight; elide: Text.ElideRight; text: root.gpuUtilization; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
                 HistoryGraph {
                   id: gpuGraph
                   anchors.left: parent.left
@@ -2263,10 +2263,13 @@ Panel {
 
               Item {
                 width: parent.width
-                implicitHeight: memoryGraph.implicitHeight + Style.space(4)
+                implicitHeight: memoryGraph.anchors.topMargin + memoryGraph.height + Style.space(4)
                 Text { text: "Memory"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
                 Text {
                   anchors.right: parent.right
+                  width: parent.width * 0.58
+                  horizontalAlignment: Text.AlignRight
+                  elide: Text.ElideRight
                   text: root.memoryHistory.length > 0 ? root.memoryHistory[root.memoryHistory.length - 1].toFixed(0) + "%" : "—"
                   color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
                 }
@@ -2285,10 +2288,13 @@ Panel {
 
               Item {
                 width: parent.width
-                implicitHeight: networkGraph.implicitHeight + Style.space(4)
+                implicitHeight: networkGraph.anchors.topMargin + networkGraph.height + Style.space(4)
                 Text { text: "Network"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
                 Text {
                   anchors.right: parent.right
+                  width: parent.width * 0.58
+                  horizontalAlignment: Text.AlignRight
+                  elide: Text.ElideRight
                   text: "↓ " + root.networkReceiving + " · ↑ " + root.networkSending
                   color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
                 }
@@ -2311,10 +2317,13 @@ Panel {
 
               Item {
                 width: parent.width
-                implicitHeight: temperatureGraph.implicitHeight + Style.space(4)
+                implicitHeight: temperatureGraph.anchors.topMargin + temperatureGraph.height + Style.space(4)
                 Text { text: "Temperatures"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
                 Text {
                   anchors.right: parent.right
+                  width: parent.width * 0.58
+                  horizontalAlignment: Text.AlignRight
+                  elide: Text.ElideRight
                   text: "CPU " + root.cpuTemperature + " · GPU " + root.gpuTemperature
                   color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall
                 }

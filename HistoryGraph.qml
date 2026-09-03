@@ -17,6 +17,7 @@ Item {
   property color primaryColor: Color.accent
   property color secondaryColor: Color.muted
   property real lineWidth: 1.5
+  implicitHeight: 72
 
   function finiteValues(source) {
     var result = []
