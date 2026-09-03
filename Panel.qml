@@ -2192,7 +2192,7 @@ Panel {
               }
 
               Text {
-                text: root.gpuAvailable ? "Live GPU" : "Unavailable"
+                text: "Live"
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption

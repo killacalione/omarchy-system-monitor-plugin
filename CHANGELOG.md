@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0
+- First stable release of the Omarchy-native System Monitor plugin
+- Consolidated live performance graphs, GPU, CPU, memory, process, storage, hardware/PCI, network, and systemd/service telemetry
+- Added bounded in-memory history, lifecycle-safe read-only collectors, consistent unavailable-state handling, and responsive scrolling/panel layout
+- Added release documentation covering installation, updates, disabling, data sources, polling, privacy, permissions, limitations, and troubleshooting
+- Updated the plugin version to `1.0.0`
+
 ## Milestone 9 bugfix — Performance graph layout
 - Corrected graph component and metric-wrapper implicit sizing so each Performance graph reserves its header, spacing, and full 72px drawing area without overlap
 - Constrained long current-value labels to the existing card width while preserving right alignment and the existing 0.9.0 version

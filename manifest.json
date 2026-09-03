@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "k3v.hardware",
   "name": "System Monitor",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "author": "k3v",
-  "description": "A quick hardware and system overview for the Omarchy bar",
+  "description": "Live performance, hardware, network, and service telemetry for the Omarchy bar",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "System Monitor",
-    "description": "Hardware overview panel",
+    "description": "Live System Monitor with performance graphs and read-only telemetry",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right"
