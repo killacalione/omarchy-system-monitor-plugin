@@ -5,6 +5,22 @@ shows current performance, hardware, network, storage, and systemd state in a
 scrollable panel, with short-term in-memory graphs for the most useful live
 metrics.
 
+Open one native bar widget to see the health of your whole Linux desktop
+without leaving Omarchy.
+
+## Why install it?
+
+- **One glance:** CPU, GPU, memory, storage, network, hardware, and service
+  health in one scrollable panel
+- **Native experience:** theme-aware Omarchy UI with click, keyboard, Escape,
+  and shell open/close support
+- **Read-only by design:** no background daemon, service controls, or settings
+  changes
+- **Graceful fallbacks:** optional tools and unavailable sensors degrade to
+  clear `—` or `Not exposed` values instead of failing the panel
+- **Privacy-conscious:** excludes serial numbers, saved network secrets,
+  BSSIDs, MAC addresses, and command controls
+
 ## Features
 
 - **Performance:** CPU, GPU, memory, network RX/TX, and CPU/GPU temperature
@@ -26,8 +42,9 @@ metrics.
 
 ## Screenshots
 
-The panel is designed for a compact Omarchy bar popup. Screenshots are kept
-outside this repository so the plugin remains source-only.
+The panel is designed for a compact Omarchy bar popup. Add a root-level
+`preview.png` or `preview.webp` to this repository to show the panel in the
+marketplace listing.
 
 ## Requirements
 

@@ -4,7 +4,7 @@
   "name": "System Monitor",
   "version": "1.0.1",
   "author": "k3v",
-  "description": "Live performance, hardware, network, and service telemetry for the Omarchy bar",
+  "description": "A native Omarchy bar widget for live CPU, GPU, memory, storage, network, hardware, and service monitoring.",
   "kinds": [
     "bar-widget"
   ],
