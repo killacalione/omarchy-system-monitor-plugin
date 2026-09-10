@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+- Fixed panel opening after Omarchy updated the plugin bar API by using the supported center-hover suppression setter
+- Preserved compatibility with older bar implementations that expose the writable property directly
+
 ## 1.0.0
 - First stable release of the Omarchy-native System Monitor plugin
 - Consolidated live performance graphs, GPU, CPU, memory, process, storage, hardware/PCI, network, and systemd/service telemetry

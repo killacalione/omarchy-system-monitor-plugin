@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "k3v.hardware",
   "name": "System Monitor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "k3v",
   "description": "Live performance, hardware, network, and service telemetry for the Omarchy bar",
   "kinds": [
