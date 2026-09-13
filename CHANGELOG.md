@@ -93,3 +93,8 @@
 - Removed the wrapper `BarWidget.qml` loader architecture that did not expose the correct lifecycle to the bar
 - Kept the NVIDIA GPU polling active only while the panel is open
 - Preserved graceful `—` values on command failure
+## Unreleased
+
+- Harden telemetry collectors by removing login-shell execution, using
+  absolute interpreter and tool paths, bounding output, and enforcing
+  subprocess deadlines.

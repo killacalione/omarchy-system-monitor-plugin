@@ -144,6 +144,14 @@ environment variables, or service command lines.
 Monitoring is read-only and normal use does not require `sudo`, polkit
 changes, or elevated privileges.
 
+## Collector safety
+
+Collectors run through `/usr/bin/python3` with a minimal `PATH` and `LC_ALL`
+environment. They do not invoke a login shell, use absolute paths for external
+telemetry tools, cap emitted output at 64 KiB per stream, and enforce
+subprocess and collector deadlines. A timed-out collector is terminated by
+its process group and its telemetry is discarded.
+
 ## Limitations
 
 - PSU telemetry is not exposed on this desktop, so the panel reports

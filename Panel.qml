@@ -1098,9 +1098,27 @@ Panel {
   Process {
     id: processProc
     command: [
-      "bash",
-      "-lc",
-      "python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import json, os, time\n" +
       "exclude = {os.getpid(), os.getppid()}\n" +
       "def read_status(path):\n" +
@@ -1204,7 +1222,7 @@ Panel {
       "    print(json.dumps(payload, separators=(',', ':')))\n" +
       "except Exception as exc:\n" +
       "    print(json.dumps({'processCount': 0, 'threadCount': 0, 'topCpu': [], 'error': str(exc)[:200]}, separators=(',', ':')) )\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
@@ -1238,9 +1256,27 @@ Panel {
   Process {
     id: cpuProc
     command: [
-      "bash",
-      "-lc",
-      "python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import glob, os, re, sys\n" +
       "model=''\n" +
       "text=''\n" +
@@ -1314,7 +1350,7 @@ Panel {
       "else:\n" +
       "    sys.stderr.write('k3v.hardware: no usable CPU temperature sensor found under /sys/class/hwmon (searched Tdie/Tctl/k10temp/coretemp candidates)\\n')\n" +
       "print(','.join([str(model), str(total), str(idle), 'nan' if temp_c is None else str(temp_c), str(mem_total), str(mem_available), str(swap_total), str(swap_free)]))\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
@@ -1336,7 +1372,14 @@ Panel {
   Process {
     id: gpuProc
     command: [
-      "nvidia-smi",
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "5s",
+      "/usr/bin/nvidia-smi",
       "--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,fan.speed,clocks.gr,clocks.mem,driver_version",
       "--format=csv,noheader,nounits"
     ]
@@ -1360,9 +1403,27 @@ Panel {
   Process {
     id: hardwareProc
     command: [
-      "bash",
-      "-lc",
-      "python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import json, os, re, shlex, subprocess\n" +
       "\n" +
       "def read_text(path):\n" +
@@ -1446,7 +1507,7 @@ Panel {
       "\n" +
       "pci_raw = []\n" +
       "try:\n" +
-      "    lspci_out = subprocess.check_output(['lspci', '-D', '-nn', '-mm', '-k'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'})\n" +
+      "lspci_out = subprocess.check_output(['/usr/bin/lspci', '-D', '-nn', '-mm', '-k'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=3)\n" +
       "except Exception as exc:\n" +
       "    lspci_out = ''\n" +
       "\n" +
@@ -1535,7 +1596,7 @@ Panel {
       "    'filtered': filtered\n" +
       "}\n" +
       "print(json.dumps(payload, separators=(',', ':')) )\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
@@ -1593,9 +1654,27 @@ Panel {
   Process {
     id: networkMetaProc
     command: [
-      "bash",
-      "-lc",
-      "python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import json, os, re, subprocess\n" +
       "\n" +
       "def read_text(path):\n" +
@@ -1607,7 +1686,7 @@ Panel {
       "\n" +
       "def jcall(args):\n" +
       "    try:\n" +
-      "        return json.loads(subprocess.check_output(args, stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "        return json.loads(subprocess.check_output(args, stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=2))\n" +
       "    except Exception:\n" +
       "        return []\n" +
       "\n" +
@@ -1621,9 +1700,9 @@ Panel {
       "            out.append(value)\n" +
       "    return out\n" +
       "\n" +
-      "links = jcall(['ip', '-j', 'link', 'show'])\n" +
-      "addresses = jcall(['ip', '-j', 'addr', 'show'])\n" +
-      "routes = jcall(['ip', '-j', 'route', 'show', 'default'])\n" +
+      "links = jcall(['/usr/bin/ip', '-j', 'link', 'show'])\n" +
+      "addresses = jcall(['/usr/bin/ip', '-j', 'addr', 'show'])\n" +
+      "routes = jcall(['/usr/bin/ip', '-j', 'route', 'show', 'default'])\n" +
       "default_iface = ''\n" +
       "default_gateway = ''\n" +
       "for route in routes:\n" +
@@ -1687,7 +1766,7 @@ Panel {
       "\n" +
       "if iface_type == 'Wi-Fi':\n" +
       "    try:\n" +
-      "        iw = subprocess.check_output(['iw', 'dev', iface, 'link'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'})\n" +
+      "        iw = subprocess.check_output(['/usr/bin/iw', 'dev', iface, 'link'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=2)\n" +
       "        match = re.search(r'SSID:(.*)', iw, re.MULTILINE)\n" +
       "        if match:\n" +
       "            ssid = match.group(1).strip()\n" +
@@ -1703,7 +1782,7 @@ Panel {
       "\n" +
       "dns_servers = []\n" +
       "try:\n" +
-      "    resolv = subprocess.check_output(['resolvectl', 'status'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'})\n" +
+      "    resolv = subprocess.check_output(['/usr/bin/resolvectl', 'status'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=2)\n" +
       "    current_section = None\n" +
       "    for line in resolv.splitlines():\n" +
       "        section_match = re.match(r'^\\s*Link\\s+\\d+\\s+\\(([^)]+)\\)\\s*$', line)\n" +
@@ -1778,7 +1857,7 @@ Panel {
       "\n" +
       "payload = {'interface': iface or '—', 'connection': connection or '—', 'state': state, 'ipv4': ipv4 or '—', 'gateway': gateway or '—', 'link': link_speed or '—', 'dns': ', '.join(dns_servers) if dns_servers else '—', 'summary': summary, 'adapters': adapters}\n" +
       "print(json.dumps(payload, separators=(',', ':')) )\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
@@ -1807,14 +1886,32 @@ Panel {
   Process {
     id: networkStatsProc
     command: [
-      "bash",
-      "-lc",
-      "python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import json, os, subprocess\n" +
       "\n" +
       "routes = []\n" +
       "try:\n" +
-      "    routes = json.loads(subprocess.check_output(['ip', '-j', 'route', 'show', 'default'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "    routes = json.loads(subprocess.check_output(['/usr/bin/ip', '-j', 'route', 'show', 'default'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=2))\n" +
       "except Exception:\n" +
       "    routes = []\n" +
       "iface = ''\n" +
@@ -1854,7 +1951,7 @@ Panel {
       "        rx_bytes = 0\n" +
       "        tx_bytes = 0\n" +
       "print(json.dumps({'iface': iface, 'rxBytes': rx_bytes, 'txBytes': tx_bytes}, separators=(',', ':')) )\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
@@ -1881,22 +1978,40 @@ Panel {
   Process {
     id: serviceProc
     command: [
-      "bash",
-      "-lc",
-      "python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import json, os, subprocess\n" +
       "\n" +
-      "LIST = ['systemctl', '--no-pager', '--no-legend', '--plain', '--full', 'list-units', '--type=service', '--all']\n" +
+      "LIST = ['/usr/bin/systemctl', '--no-pager', '--no-legend', '--plain', '--full', 'list-units', '--type=service', '--all']\n" +
       "IMPORTANT = ('NetworkManager', 'networkd', 'bluetooth', 'pipewire', 'wireplumber', 'sshd', 'ssh.service', 'sunshine', 'tailscale', 'docker', 'podman', 'libvirt', 'cups', 'power-profiles-daemon')\n" +
       "\n" +
       "def call(args):\n" +
       "    try:\n" +
-      "        return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, check=False)\n" +
+      "        return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, check=False, timeout=3)\n" +
       "    except OSError:\n" +
       "        return None\n" +
       "\n" +
       "def manager_state(user):\n" +
-      "    args = ['systemctl'] + (['--user'] if user else []) + ['is-system-running']\n" +
+      "    args = ['/usr/bin/systemctl'] + (['--user'] if user else []) + ['is-system-running']\n" +
       "    result = call(args)\n" +
       "    if result is None:\n" +
       "        return 'unknown'\n" +
@@ -1904,7 +2019,7 @@ Panel {
       "    return state[0].strip() if state and state[0].strip() else 'unknown'\n" +
       "\n" +
       "def parse_units(user):\n" +
-      "    result = call((['systemctl', '--user'] if user else ['systemctl']) + LIST[1:])\n" +
+      "    result = call((['/usr/bin/systemctl', '--user'] if user else ['/usr/bin/systemctl']) + LIST[1:])\n" +
       "    if result is None or result.returncode != 0:\n" +
       "        return None\n" +
       "    services = []\n" +
@@ -1936,7 +2051,7 @@ Panel {
       "    elif unit.startswith('wayland-wm@') and unit.endswith('.service'): display = item\n" +
       "payload = {'systemManager': manager(system, manager_state(False)), 'userManager': manager(user, manager_state(True)), 'services': all_services, 'importantServices': important, 'failedServices': failed[:5], 'audio': audio, 'display': display}\n" +
       "print(json.dumps(payload, separators=(',', ':')))\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
@@ -1959,9 +2074,27 @@ Panel {
   Process {
     id: storageProc
     command: [
-      "bash",
-      "-lc",
-      "LC_ALL=C python3 - <<'PY'\n" +
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      "LC_ALL=C",
+      "/usr/bin/timeout",
+      "--kill-after=1s",
+      "8s",
+      "/usr/bin/python3",
+      "-c",
+      "" +
+      "import sys\n" +
+      "class _LimitedWriter:\n" +
+      "    def __init__(self, stream, limit=65536): self.stream, self.limit, self.used = stream, limit, 0\n" +
+      "    def write(self, data):\n" +
+      "        remaining = max(0, self.limit - self.used)\n" +
+      "        chunk = str(data)[:remaining]\n" +
+      "        self.used += len(chunk)\n" +
+      "        return self.stream.write(chunk)\n" +
+      "    def flush(self): return self.stream.flush()\n" +
+      "sys.stdout = _LimitedWriter(sys.stdout)\n" +
+      "sys.stderr = _LimitedWriter(sys.stderr)\n" +
       "import json, os, shutil, subprocess\n" +
       "root_info = {'source': None, 'filesystem': None, 'totalBytes': 0, 'usedBytes': 0, 'availableBytes': 0, 'usagePercent': 0.0}\n" +
       "try:\n" +
@@ -1976,9 +2109,9 @@ Panel {
       "    root_info['usagePercent'] = round((100.0 * used / total), 1) if total else 0.0\n" +
       "except Exception:\n" +
       "    pass\n" +
-      "if shutil.which('findmnt'):\n" +
+      "if os.path.exists('/usr/bin/findmnt'):\n" +
       "    try:\n" +
-      "        data = json.loads(subprocess.check_output(['findmnt', '-J', '-T', '/'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "        data = json.loads(subprocess.check_output(['/usr/bin/findmnt', '-J', '-T', '/'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=3))\n" +
       "        filesystems = data.get('filesystems') or []\n" +
       "        if filesystems:\n" +
       "            first = filesystems[0]\n" +
@@ -1988,9 +2121,9 @@ Panel {
       "    except Exception:\n" +
       "        pass\n" +
       "drives = []\n" +
-      "if shutil.which('lsblk'):\n" +
+      "if os.path.exists('/usr/bin/lsblk'):\n" +
       "    try:\n" +
-      "        data = json.loads(subprocess.check_output(['lsblk', '-J', '-b', '-d', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,ROTA,RM'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}))\n" +
+      "        data = json.loads(subprocess.check_output(['/usr/bin/lsblk', '-J', '-b', '-d', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,ROTA,RM'], stderr=subprocess.DEVNULL, text=True, env={**os.environ, 'LC_ALL': 'C'}, timeout=3))\n" +
       "        for item in (data.get('blockdevices') or []):\n" +
       "            if not isinstance(item, dict):\n" +
       "                continue\n" +
@@ -2030,7 +2163,7 @@ Panel {
       "    except Exception:\n" +
       "        pass\n" +
       "print(json.dumps({'root': root_info, 'drives': drives}, separators=(',', ':')) )\n" +
-      "PY"
+      ""
     ]
     stdout: StdioCollector {
       waitForEnd: true
