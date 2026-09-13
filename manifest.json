@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "k3v.hardware",
   "name": "System Monitor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "k3v",
   "description": "A native Omarchy bar widget for live CPU, GPU, memory, storage, network, hardware, and service monitoring.",
   "kinds": [

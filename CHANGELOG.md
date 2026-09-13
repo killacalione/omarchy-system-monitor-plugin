@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+- Hardened telemetry collectors against login-shell and `PATH` hijacking by using a minimal environment and trusted absolute interpreter and tool paths
+- Added collector deadlines, nested subprocess timeouts, bounded stdout/stderr output, and timeout cleanup
+- Documented collector safety behavior and security-review remediation
+
 ## 1.0.1
 - Fixed panel opening after Omarchy updated the plugin bar API by using the supported center-hover suppression setter
 - Preserved compatibility with older bar implementations that expose the writable property directly
